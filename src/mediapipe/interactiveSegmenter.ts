@@ -1,7 +1,11 @@
 import { FilesetResolver, InteractiveSegmenter, type InteractiveSegmenterResult } from '@mediapipe/tasks-vision';
 import { getSelectionCenter, type SelectionRect } from '../domain/selection';
 
-const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.20/wasm';
+export const MEDIAPIPE_TASKS_VERSION = '0.10.35';
+export function getVisionWasmUrl() {
+  return `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_TASKS_VERSION}/wasm`;
+}
+
 const MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite';
 
@@ -21,7 +25,7 @@ function getImageSize(image: SegmentableImage) {
 }
 
 export async function createInteractiveSegmenter(): Promise<SegmenterAdapter> {
-  const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+  const vision = await FilesetResolver.forVisionTasks(getVisionWasmUrl());
   const segmenter = await InteractiveSegmenter.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: MODEL_URL,

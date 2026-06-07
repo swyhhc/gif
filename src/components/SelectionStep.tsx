@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   clampSelection,
+  createSelectionFromPoint,
   hasUsableSelection,
-  normalizeSelection,
   type SelectionRect,
 } from '../domain/selection';
 
@@ -19,7 +19,6 @@ type Point = {
 
 export function SelectionStep({ frame, onBack, onConfirm }: SelectionStepProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [start, setStart] = useState<Point | null>(null);
   const [selection, setSelection] = useState<SelectionRect | null>(null);
 
   useEffect(() => {
@@ -39,30 +38,23 @@ export function SelectionStep({ frame, onBack, onConfirm }: SelectionStepProps) 
     };
   };
 
-  const confirmedSelection = selection ? clampSelection(normalizeSelection(selection), frame.width, frame.height) : null;
+  const confirmedSelection = selection ? clampSelection(selection, frame.width, frame.height) : null;
 
   return (
     <section className="step-panel">
       <div className="step-heading">
         <p className="eyebrow">第一帧</p>
-        <h1>框选主体</h1>
+        <h1>点一下主体</h1>
       </div>
       <canvas
         ref={canvasRef}
         className="selection-canvas"
         onPointerDown={(event) => {
           const point = getCanvasPoint(event);
-          setStart(point);
-          setSelection({ x: point.x, y: point.y, width: 0, height: 0 });
+          setSelection(createSelectionFromPoint(point, frame.width, frame.height));
         }}
-        onPointerMove={(event) => {
-          if (!start) return;
-          const point = getCanvasPoint(event);
-          setSelection({ x: start.x, y: start.y, width: point.x - start.x, height: point.y - start.y });
-        }}
-        onPointerUp={() => setStart(null)}
       />
-      <p className="hint-text">用手指拖一个框，把想保留的人或物圈进去。</p>
+      <p className="hint-text">点在要保留的人或物上，系统会用这个位置识别主体。</p>
       <div className="button-row">
         <button className="secondary-button" type="button" onClick={onBack}>
           返回
@@ -88,11 +80,15 @@ function drawSelectionCanvas(canvas: HTMLCanvasElement, frame: ImageData, select
 
   if (!selection) return;
 
-  const rect = clampSelection(normalizeSelection(selection), canvas.width, canvas.height);
+  const rect = clampSelection(selection, canvas.width, canvas.height);
   context.fillStyle = 'rgba(0, 0, 0, 0.28)';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.putImageData(frame, 0, 0, rect.x, rect.y, rect.width, rect.height);
   context.strokeStyle = '#16c784';
   context.lineWidth = Math.max(2, canvas.width / 140);
   context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+  context.beginPath();
+  context.arc(rect.x + rect.width / 2, rect.y + rect.height / 2, Math.max(6, canvas.width / 70), 0, Math.PI * 2);
+  context.fillStyle = '#16c784';
+  context.fill();
 }

@@ -49,7 +49,7 @@ function waitForEvent<T extends Event>(target: EventTarget, eventName: string): 
 function createVideoElement(file: File): { video: HTMLVideoElement; url: string } {
   const url = URL.createObjectURL(file);
   const video = document.createElement('video');
-  video.preload = 'metadata';
+  video.preload = 'auto';
   video.muted = true;
   video.playsInline = true;
   video.src = url;
@@ -61,6 +61,7 @@ export async function loadVideoMetadata(file: File): Promise<VideoMetadata> {
 
   try {
     await waitForEvent(video, 'loadedmetadata');
+    await waitForDrawableFrame(video);
     return {
       duration: video.duration,
       width: video.videoWidth,
@@ -76,6 +77,7 @@ export async function captureFirstFrame(file: File, longestEdge = 480): Promise<
 
   try {
     await waitForEvent(video, 'loadedmetadata');
+    await waitForDrawableFrame(video);
     await seekVideo(video, 0);
     const size = getScaledSize(video.videoWidth, video.videoHeight, longestEdge);
     return drawVideoFrame(video, size.width, size.height);
@@ -89,6 +91,7 @@ export async function extractVideoFrames(file: File, settings: ExportSettings): 
 
   try {
     await waitForEvent(video, 'loadedmetadata');
+    await waitForDrawableFrame(video);
     const validation = validateVideoMetadata({
       duration: video.duration,
       width: video.videoWidth,
@@ -122,6 +125,14 @@ async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
   const seeked = waitForEvent(video, 'seeked');
   video.currentTime = time;
   await seeked;
+}
+
+async function waitForDrawableFrame(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    return;
+  }
+
+  await Promise.race([waitForEvent(video, 'loadeddata'), waitForEvent(video, 'canplay')]);
 }
 
 function drawVideoFrame(video: HTMLVideoElement, width: number, height: number): ImageData {

@@ -5,6 +5,11 @@ export type SelectionRect = {
   height: number;
 };
 
+export type SelectionPoint = {
+  x: number;
+  y: number;
+};
+
 export function normalizeSelection(rect: SelectionRect): SelectionRect {
   const x = rect.width < 0 ? rect.x + rect.width : rect.x;
   const y = rect.height < 0 ? rect.y + rect.height : rect.y;
@@ -41,4 +46,19 @@ export function getSelectionCenter(rect: SelectionRect, canvasWidth: number, can
 
 export function hasUsableSelection(rect: SelectionRect): boolean {
   return rect.width >= 20 && rect.height >= 20;
+}
+
+export function createSelectionFromPoint(point: SelectionPoint, canvasWidth: number, canvasHeight: number): SelectionRect {
+  const width = Math.max(40, Math.round(canvasWidth * 0.25));
+  const height = Math.max(40, Math.round(canvasHeight * 0.25));
+  return clampSelection(
+    {
+      x: point.x - width / 2,
+      y: point.y - height / 2,
+      width,
+      height,
+    },
+    canvasWidth,
+    canvasHeight,
+  );
 }
