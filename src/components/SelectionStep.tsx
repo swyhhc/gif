@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   clampSelection,
+  createPromptFromPoint,
+  createPromptFromStroke,
   createSelectionFromPoint,
   hasUsableSelection,
   normalizeSelection,
+  type SelectionPoint,
   type SelectionRect,
+  type SubjectPrompt,
 } from '../domain/selection';
 
 type SelectionStepProps = {
@@ -14,8 +18,8 @@ type SelectionStepProps = {
   previewError: string | null;
   onBack(): void;
   onSelectionChange(): void;
-  onPreview(selection: SelectionRect): void;
-  onConfirm(selection: SelectionRect): void;
+  onPreview(prompt: SubjectPrompt): void;
+  onConfirm(prompt: SubjectPrompt): void;
 };
 
 type Point = {
@@ -34,17 +38,18 @@ export function SelectionStep({
   onConfirm,
 }: SelectionStepProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const strokePointsRef = useRef<SelectionPoint[]>([]);
   const [start, setStart] = useState<Point | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [selection, setSelection] = useState<SelectionRect | null>(null);
+  const [prompt, setPrompt] = useState<SubjectPrompt | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.width = frame.width;
     canvas.height = frame.height;
-    drawSelectionCanvas(canvas, frame, selection);
-  }, [frame, selection]);
+    drawSelectionCanvas(canvas, frame, prompt);
+  }, [frame, prompt]);
 
   const getCanvasPoint = (event: React.PointerEvent<HTMLCanvasElement>): Point => {
     const canvas = event.currentTarget;
@@ -55,7 +60,7 @@ export function SelectionStep({
     };
   };
 
-  const confirmedSelection = selection ? clampSelection(selection, frame.width, frame.height) : null;
+  const confirmedSelection = prompt ? clampSelection(prompt.bounds, frame.width, frame.height) : null;
 
   return (
     <section className="step-panel">
@@ -71,7 +76,8 @@ export function SelectionStep({
           onSelectionChange();
           setStart(point);
           setDragging(false);
-          setSelection(createSelectionFromPoint(point, frame.width, frame.height));
+          strokePointsRef.current = [point];
+          setPrompt(createPromptFromPoint(point, frame.width, frame.height));
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
@@ -82,13 +88,10 @@ export function SelectionStep({
           if (distance < 10 && !dragging) return;
 
           setDragging(true);
-          setSelection(
-            clampSelection(
-              normalizeSelection({ x: start.x, y: start.y, width: point.x - start.x, height: point.y - start.y }),
-              frame.width,
-              frame.height,
-            ),
-          );
+          const nextPoints = [...strokePointsRef.current, point];
+          strokePointsRef.current = nextPoints;
+          const nextPrompt = createPromptFromStroke(nextPoints, frame.width, frame.height);
+          setPrompt(nextPrompt);
         }}
         onPointerUp={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -114,11 +117,11 @@ export function SelectionStep({
           type="button"
           disabled={!confirmedSelection || !hasUsableSelection(confirmedSelection)}
           onClick={() => {
-            if (!confirmedSelection) return;
+            if (!confirmedSelection || !prompt) return;
             if (previewUrl) {
-              onConfirm(confirmedSelection);
+              onConfirm(prompt);
             } else {
-              onPreview(confirmedSelection);
+              onPreview(prompt);
             }
           }}
         >
@@ -129,23 +132,42 @@ export function SelectionStep({
   );
 }
 
-function drawSelectionCanvas(canvas: HTMLCanvasElement, frame: ImageData, selection: SelectionRect | null) {
+function drawSelectionCanvas(canvas: HTMLCanvasElement, frame: ImageData, prompt: SubjectPrompt | null) {
   const context = canvas.getContext('2d');
   if (!context) return;
 
   context.putImageData(frame, 0, 0);
 
-  if (!selection) return;
+  if (!prompt) return;
 
-  const rect = clampSelection(selection, canvas.width, canvas.height);
+  const rect = clampSelection(prompt.bounds, canvas.width, canvas.height);
   context.fillStyle = 'rgba(0, 0, 0, 0.28)';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.putImageData(frame, 0, 0, rect.x, rect.y, rect.width, rect.height);
   context.strokeStyle = '#16c784';
   context.lineWidth = Math.max(2, canvas.width / 140);
   context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+  drawPromptStroke(context, prompt.points, canvas.width);
+}
+
+function drawPromptStroke(context: CanvasRenderingContext2D, points: SelectionPoint[], canvasWidth: number) {
+  if (points.length === 0) return;
+
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.lineWidth = Math.max(8, canvasWidth / 32);
+  context.strokeStyle = 'rgba(22, 199, 132, 0.88)';
   context.beginPath();
-  context.arc(rect.x + rect.width / 2, rect.y + rect.height / 2, Math.max(6, canvas.width / 70), 0, Math.PI * 2);
-  context.fillStyle = '#16c784';
-  context.fill();
+  context.moveTo(points[0].x, points[0].y);
+
+  for (const point of points.slice(1)) {
+    context.lineTo(point.x, point.y);
+  }
+
+  if (points.length === 1) {
+    context.arc(points[0].x, points[0].y, Math.max(8, canvasWidth / 38), 0, Math.PI * 2);
+  }
+
+  context.stroke();
 }

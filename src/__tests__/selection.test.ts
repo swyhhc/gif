@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { clampSelection, createSelectionFromPoint, getSelectionCenter, hasUsableSelection } from '../domain/selection';
+import {
+  clampSelection,
+  createPromptFromPoint,
+  createPromptFromStroke,
+  createSelectionFromPoint,
+  getSelectionCenter,
+  hasUsableSelection,
+} from '../domain/selection';
 
 describe('selection geometry', () => {
   it('clamps a box inside canvas bounds', () => {
@@ -38,6 +45,34 @@ describe('selection geometry', () => {
       y: 90,
       width: 80,
       height: 60,
+    });
+  });
+
+  it('creates a keypoint prompt from a tap', () => {
+    expect(createPromptFromPoint({ x: 160, y: 120 }, 320, 240)).toEqual({
+      bounds: { x: 120, y: 90, width: 80, height: 60 },
+      points: [{ x: 160, y: 120 }],
+    });
+  });
+
+  it('creates a scribble prompt from a stroke', () => {
+    expect(
+      createPromptFromStroke(
+        [
+          { x: 50, y: 40 },
+          { x: 120, y: 90 },
+          { x: 180, y: 130 },
+        ],
+        320,
+        240,
+      ),
+    ).toEqual({
+      bounds: { x: 30, y: 20, width: 170, height: 130 },
+      points: [
+        { x: 50, y: 40 },
+        { x: 120, y: 90 },
+        { x: 180, y: 130 },
+      ],
     });
   });
 });

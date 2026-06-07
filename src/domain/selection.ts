@@ -10,6 +10,11 @@ export type SelectionPoint = {
   y: number;
 };
 
+export type SubjectPrompt = {
+  bounds: SelectionRect;
+  points: SelectionPoint[];
+};
+
 export function normalizeSelection(rect: SelectionRect): SelectionRect {
   const x = rect.width < 0 ? rect.x + rect.width : rect.x;
   const y = rect.height < 0 ? rect.y + rect.height : rect.y;
@@ -61,4 +66,50 @@ export function createSelectionFromPoint(point: SelectionPoint, canvasWidth: num
     canvasWidth,
     canvasHeight,
   );
+}
+
+export function createPromptFromPoint(point: SelectionPoint, canvasWidth: number, canvasHeight: number): SubjectPrompt {
+  return {
+    bounds: createSelectionFromPoint(point, canvasWidth, canvasHeight),
+    points: [clampPoint(point, canvasWidth, canvasHeight)],
+  };
+}
+
+export function createPromptFromStroke(
+  points: SelectionPoint[],
+  canvasWidth: number,
+  canvasHeight: number,
+): SubjectPrompt {
+  const safePoints = points.map((point) => clampPoint(point, canvasWidth, canvasHeight));
+
+  if (safePoints.length === 0) {
+    return createPromptFromPoint({ x: canvasWidth / 2, y: canvasHeight / 2 }, canvasWidth, canvasHeight);
+  }
+
+  const minX = Math.min(...safePoints.map((point) => point.x));
+  const minY = Math.min(...safePoints.map((point) => point.y));
+  const maxX = Math.max(...safePoints.map((point) => point.x));
+  const maxY = Math.max(...safePoints.map((point) => point.y));
+  const padding = Math.max(20, Math.round(Math.min(canvasWidth, canvasHeight) * 0.08));
+
+  return {
+    bounds: clampSelection(
+      {
+        x: minX - padding,
+        y: minY - padding,
+        width: maxX - minX + padding * 2,
+        height: maxY - minY + padding * 2,
+      },
+      canvasWidth,
+      canvasHeight,
+    ),
+    points: safePoints,
+  };
+}
+
+function clampPoint(point: SelectionPoint, canvasWidth: number, canvasHeight: number): SelectionPoint {
+  return {
+    x: Math.max(0, Math.min(point.x, canvasWidth)),
+    y: Math.max(0, Math.min(point.y, canvasHeight)),
+  };
 }

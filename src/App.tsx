@@ -7,7 +7,7 @@ import { UploadStep } from './components/UploadStep';
 import { encodeTransparentGif, type GifFrame } from './domain/gif';
 import { saveHistoryItem, listHistory, type HistoryItem } from './domain/history';
 import { applyMaskToImageData, hasLikelySubjectMask } from './domain/mask';
-import type { SelectionRect } from './domain/selection';
+import type { SubjectPrompt } from './domain/selection';
 import { type ExportSettings } from './domain/settings';
 import { captureFirstFrame, extractVideoFrames, loadVideoMetadata, validateVideoMetadata } from './domain/video';
 import { createInteractiveSegmenter } from './mediapipe/interactiveSegmenter';
@@ -23,7 +23,7 @@ export function App() {
   const [step, setStep] = useState<WorkflowStep>('upload');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [firstFrame, setFirstFrame] = useState<ImageData | null>(null);
-  const [selection, setSelection] = useState<SelectionRect | null>(null);
+  const [subjectPrompt, setSubjectPrompt] = useState<SubjectPrompt | null>(null);
   const [settings, setSettings] = useState<ExportSettings | null>(null);
   const [progress, setProgress] = useState<ProgressState>({ phase: '准备中', progress: 0 });
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export function App() {
       const frame = await captureFirstFrame(file);
       setVideoFile(file);
       setFirstFrame(frame);
-      setSelection(null);
+      setSubjectPrompt(null);
       clearSelectionPreview();
       setStep('select');
     } catch (event) {
@@ -68,7 +68,7 @@ export function App() {
   }
 
   async function processVideo(nextSettings: ExportSettings) {
-    if (!videoFile || !selection) return;
+    if (!videoFile || !subjectPrompt) return;
 
     cancelRef.current = false;
     setSettings(nextSettings);
@@ -94,13 +94,13 @@ export function App() {
         }
 
         const frame = frames[index];
-        const frameSelection = scaleSelection(selection, firstFrame, frame.imageData);
+        const framePrompt = scalePrompt(subjectPrompt, firstFrame, frame.imageData);
         const canvas = imageDataToCanvas(frame.imageData);
         setProgress({
           phase: `正在抠图 ${index + 1}/${frames.length}`,
           progress: 10 + (index / Math.max(1, frames.length)) * 70,
         });
-        const mask = await segmenter.segmentFrame(canvas, frameSelection);
+        const mask = await segmenter.segmentFrame(canvas, framePrompt);
         gifFrames.push({
           imageData: applyMaskToImageData(frame.imageData, mask, nextSettings.quality === 'high' ? 0.42 : 0.5),
           delayMs: Math.round(1000 / nextSettings.fps),
@@ -134,10 +134,10 @@ export function App() {
     }
   }
 
-  async function previewSubject(nextSelection: SelectionRect) {
+  async function previewSubject(nextPrompt: SubjectPrompt) {
     if (!firstFrame) return;
 
-    setSelection(nextSelection);
+    setSubjectPrompt(nextPrompt);
     setSelectionPreviewError(null);
     setSelectionPreviewStatus('正在识别主体...');
 
@@ -146,7 +146,7 @@ export function App() {
     try {
       segmenter = await createInteractiveSegmenter();
       const canvas = imageDataToCanvas(firstFrame);
-      const mask = await segmenter.segmentFrame(canvas, nextSelection);
+      const mask = await segmenter.segmentFrame(canvas, nextPrompt);
 
       if (!hasLikelySubjectMask(mask, 0.5)) {
         setSelectionPreviewStatus(null);
@@ -196,11 +196,11 @@ export function App() {
             previewError={selectionPreviewError}
             onBack={() => setStep('upload')}
             onSelectionChange={clearSelectionPreview}
-            onPreview={(nextSelection) => {
-              void previewSubject(nextSelection);
+            onPreview={(nextPrompt) => {
+              void previewSubject(nextPrompt);
             }}
-            onConfirm={(nextSelection) => {
-              setSelection(nextSelection);
+            onConfirm={(nextPrompt) => {
+              setSubjectPrompt(nextPrompt);
               setStep('settings');
             }}
           />
@@ -233,7 +233,7 @@ export function App() {
             onNewVideo={() => {
               setVideoFile(null);
               setFirstFrame(null);
-              setSelection(null);
+              setSubjectPrompt(null);
               clearSelectionPreview();
               setSettings(null);
               setStep('upload');
@@ -273,19 +273,25 @@ function imageDataToObjectUrl(imageData: ImageData): Promise<string> {
   });
 }
 
-function scaleSelection(
-  selection: SelectionRect,
+function scalePrompt(
+  prompt: SubjectPrompt,
   sourceFrame: ImageData | null,
   targetFrame: ImageData,
-): SelectionRect {
-  if (!sourceFrame) return selection;
+): SubjectPrompt {
+  if (!sourceFrame) return prompt;
 
   const scaleX = targetFrame.width / sourceFrame.width;
   const scaleY = targetFrame.height / sourceFrame.height;
   return {
-    x: selection.x * scaleX,
-    y: selection.y * scaleY,
-    width: selection.width * scaleX,
-    height: selection.height * scaleY,
+    bounds: {
+      x: prompt.bounds.x * scaleX,
+      y: prompt.bounds.y * scaleY,
+      width: prompt.bounds.width * scaleX,
+      height: prompt.bounds.height * scaleY,
+    },
+    points: prompt.points.map((point) => ({
+      x: point.x * scaleX,
+      y: point.y * scaleY,
+    })),
   };
 }
