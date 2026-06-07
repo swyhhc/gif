@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from 'react';
 import type { HistoryItem } from '../domain/history';
 
 type ResultStepProps = {
@@ -8,6 +9,23 @@ type ResultStepProps = {
 };
 
 export function ResultStep({ resultUrl, history, onRetry, onNewVideo }: ResultStepProps) {
+  const historyUrls = useMemo(
+    () =>
+      history.map((item) => ({
+        item,
+        url: URL.createObjectURL(item.blob),
+      })),
+    [history],
+  );
+
+  useEffect(() => {
+    return () => {
+      for (const entry of historyUrls) {
+        URL.revokeObjectURL(entry.url);
+      }
+    };
+  }, [historyUrls]);
+
   return (
     <section className="step-panel">
       <div className="step-heading">
@@ -31,11 +49,13 @@ export function ResultStep({ resultUrl, history, onRetry, onNewVideo }: ResultSt
       {history.length > 0 ? (
         <div className="history-list">
           <p className="section-label">最近记录</p>
-          {history.map((item) => (
-            <div className="history-item" key={item.id}>
-              <span>{item.longestEdge}px / {item.fps}fps</span>
+          {historyUrls.map(({ item, url }) => (
+            <a className="history-item" href={url} download={`transparent-${item.longestEdge}px-${item.fps}fps.gif`} key={item.id}>
+              <span>
+                {item.longestEdge}px / {item.fps}fps
+              </span>
               <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
-            </div>
+            </a>
           ))}
         </div>
       ) : null}
