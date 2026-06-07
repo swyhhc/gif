@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampSelection,
   createPromptFromPoint,
+  createPromptFromMask,
   createPromptFromStroke,
   createSelectionFromPoint,
   getSelectionCenter,
@@ -73,6 +74,13 @@ describe('selection geometry', () => {
         { x: 120, y: 90 },
         { x: 180, y: 130 },
       ],
+    });
+  });
+
+  it('creates a prompt from an edited mask center', () => {
+    expect(createPromptFromMask(new Uint8Array([0, 0, 0, 1]), 2, 2)).toEqual({
+      bounds: { x: 0, y: 0, width: 2, height: 2 },
+      points: [{ x: 1, y: 1 }],
     });
   });
 });

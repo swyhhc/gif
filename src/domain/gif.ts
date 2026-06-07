@@ -15,14 +15,16 @@ export function encodeTransparentGif(frames: GifFrame[]): Blob {
   for (const frame of frames) {
     const rgba = frame.imageData.data;
     const transparentIndex = 0;
-    const palette = quantize(rgba, 255);
-    palette.unshift([0, 0, 0]);
-
-    const indexed = applyPalette(rgba, palette);
+    const colorPalette = quantize(rgba, 255);
+    const palette = [[0, 0, 0] as [number, number, number], ...colorPalette];
+    const indexedColors = applyPalette(rgba, colorPalette);
+    const indexed = new Uint8Array(indexedColors.length);
 
     for (let pixel = 0; pixel < rgba.length / 4; pixel += 1) {
       if (rgba[pixel * 4 + 3] === 0) {
         indexed[pixel] = transparentIndex;
+      } else {
+        indexed[pixel] = indexedColors[pixel] + 1;
       }
     }
 

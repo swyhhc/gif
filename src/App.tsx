@@ -6,6 +6,7 @@ import { ResultStep } from './components/ResultStep';
 import { UploadStep } from './components/UploadStep';
 import { encodeTransparentGif, type GifFrame } from './domain/gif';
 import { saveHistoryItem, listHistory, type HistoryItem } from './domain/history';
+import { createExportId } from './domain/ids';
 import {
   applyBinaryMaskToImageData,
   applyMaskBrushStroke,
@@ -14,7 +15,7 @@ import {
   refineMask,
   type MaskBrushStroke,
 } from './domain/mask';
-import type { SubjectPrompt } from './domain/selection';
+import { createPromptFromMask, type SubjectPrompt } from './domain/selection';
 import { type ExportSettings } from './domain/settings';
 import { captureFirstFrame, extractVideoFrames, loadVideoMetadata, validateVideoMetadata } from './domain/video';
 import { createInteractiveSegmenter } from './mediapipe/interactiveSegmenter';
@@ -97,6 +98,7 @@ export function App() {
 
       segmenter = await createInteractiveSegmenter();
       const gifFrames: GifFrame[] = [];
+      const exportPrompt = editableSelectionMask ? createPromptFromMask(editableSelectionMask, firstFrame?.width ?? 1, firstFrame?.height ?? 1) : null;
 
       for (let index = 0; index < frames.length; index += 1) {
         if (cancelRef.current) {
@@ -105,7 +107,7 @@ export function App() {
         }
 
         const frame = frames[index];
-        const framePrompt = scalePrompt(subjectPrompt, firstFrame, frame.imageData);
+        const framePrompt = scalePrompt(exportPrompt ?? subjectPrompt, firstFrame, frame.imageData);
         const canvas = imageDataToCanvas(frame.imageData);
         setProgress({
           phase: `正在抠图 ${index + 1}/${frames.length}`,
@@ -133,7 +135,7 @@ export function App() {
       const url = URL.createObjectURL(blob);
       const item = {
         ...nextSettings,
-        id: crypto.randomUUID(),
+        id: createExportId(),
         createdAt: Date.now(),
         blob,
       };

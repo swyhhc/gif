@@ -107,6 +107,27 @@ export function createPromptFromStroke(
   };
 }
 
+export function createPromptFromMask(mask: Uint8Array, width: number, height: number): SubjectPrompt | null {
+  let totalX = 0;
+  let totalY = 0;
+  let count = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!mask[y * width + x]) continue;
+      totalX += x;
+      totalY += y;
+      count += 1;
+    }
+  }
+
+  if (count === 0) {
+    return null;
+  }
+
+  return createPromptFromPoint({ x: totalX / count, y: totalY / count }, width, height);
+}
+
 function clampPoint(point: SelectionPoint, canvasWidth: number, canvasHeight: number): SelectionPoint {
   return {
     x: Math.max(0, Math.min(point.x, canvasWidth)),
