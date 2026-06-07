@@ -11,6 +11,12 @@ export type RefineMaskOptions = MaskOptions & {
   threshold?: number;
 };
 
+export type MaskBrushStroke = {
+  mode: 'erase' | 'restore';
+  radius: number;
+  points: Array<{ x: number; y: number }>;
+};
+
 export function applyMaskToImageData(
   source: ImageData,
   mask: Float32Array,
@@ -30,6 +36,20 @@ export function applyMaskToImageData(
 
   for (let pixel = 0; pixel < refinedMask.length; pixel += 1) {
     output.data[pixel * 4 + 3] = refinedMask[pixel] ? 255 : 0;
+  }
+
+  return output;
+}
+
+export function applyBinaryMaskToImageData(source: ImageData, mask: Uint8Array): ImageData {
+  if (mask.length !== source.width * source.height) {
+    throw new Error('Mask size must match image size.');
+  }
+
+  const output = new ImageData(new Uint8ClampedArray(source.data), source.width, source.height);
+
+  for (let pixel = 0; pixel < mask.length; pixel += 1) {
+    output.data[pixel * 4 + 3] = mask[pixel] ? 255 : 0;
   }
 
   return output;
@@ -57,6 +77,27 @@ export function refineMask(mask: Float32Array, width: number, height: number, op
   }
 
   return current;
+}
+
+export function applyMaskBrushStroke(mask: Uint8Array, width: number, height: number, stroke: MaskBrushStroke): Uint8Array {
+  const output = new Uint8Array(mask);
+  const value = stroke.mode === 'restore' ? 1 : 0;
+  const radius = Math.max(0, Math.round(stroke.radius));
+
+  for (const point of stroke.points) {
+    const centerX = Math.round(point.x);
+    const centerY = Math.round(point.y);
+
+    for (let y = centerY - radius; y <= centerY + radius; y += 1) {
+      for (let x = centerX - radius; x <= centerX + radius; x += 1) {
+        if (x < 0 || y < 0 || x >= width || y >= height) continue;
+        if (Math.hypot(x - centerX, y - centerY) > radius) continue;
+        output[y * width + x] = value;
+      }
+    }
+  }
+
+  return output;
 }
 
 export function getMaskCoverage(mask: Float32Array, threshold = 0.5): number {

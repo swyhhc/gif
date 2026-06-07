@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { type MaskBrushStroke } from '../domain/mask';
 import {
   clampSelection,
   createPromptFromPoint,
   createPromptFromStroke,
   createSelectionFromPoint,
   hasUsableSelection,
-  normalizeSelection,
   type SelectionPoint,
   type SelectionRect,
   type SubjectPrompt,
@@ -14,12 +14,14 @@ import {
 type SelectionStepProps = {
   frame: ImageData;
   previewUrl: string | null;
+  editableMask: Uint8Array | null;
   previewStatus: string | null;
   previewError: string | null;
   maskSettings: MaskSettings;
   onBack(): void;
   onSelectionChange(): void;
   onMaskSettingsChange(settings: MaskSettings): void;
+  onManualMaskStroke(stroke: MaskBrushStroke): void;
   onPreview(prompt: SubjectPrompt): void;
   onConfirm(prompt: SubjectPrompt): void;
 };
@@ -30,6 +32,8 @@ export type MaskSettings = {
   edgeOffset: number;
 };
 
+type BrushMode = MaskBrushStroke['mode'];
+
 type Point = {
   x: number;
   y: number;
@@ -38,20 +42,25 @@ type Point = {
 export function SelectionStep({
   frame,
   previewUrl,
+  editableMask,
   previewStatus,
   previewError,
   maskSettings,
   onBack,
   onSelectionChange,
   onMaskSettingsChange,
+  onManualMaskStroke,
   onPreview,
   onConfirm,
 }: SelectionStepProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const editCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const strokePointsRef = useRef<SelectionPoint[]>([]);
   const [start, setStart] = useState<Point | null>(null);
   const [dragging, setDragging] = useState(false);
   const [prompt, setPrompt] = useState<SubjectPrompt | null>(null);
+  const [brushMode, setBrushMode] = useState<BrushMode>('erase');
+  const [brushSize, setBrushSize] = useState(16);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -61,14 +70,13 @@ export function SelectionStep({
     drawSelectionCanvas(canvas, frame, prompt);
   }, [frame, prompt]);
 
-  const getCanvasPoint = (event: React.PointerEvent<HTMLCanvasElement>): Point => {
-    const canvas = event.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
-    };
-  };
+  useEffect(() => {
+    const canvas = editCanvasRef.current;
+    if (!canvas || !editableMask) return;
+    canvas.width = frame.width;
+    canvas.height = frame.height;
+    drawEditablePreview(canvas, frame, editableMask);
+  }, [editableMask, frame]);
 
   const confirmedSelection = prompt ? clampSelection(prompt.bounds, frame.width, frame.height) : null;
 
@@ -82,7 +90,7 @@ export function SelectionStep({
         ref={canvasRef}
         className="selection-canvas"
         onPointerDown={(event) => {
-          const point = getCanvasPoint(event);
+          const point = getCanvasRelativePoint(event.currentTarget, event.clientX, event.clientY);
           onSelectionChange();
           setStart(point);
           setDragging(false);
@@ -92,7 +100,7 @@ export function SelectionStep({
         }}
         onPointerMove={(event) => {
           if (!start) return;
-          const point = getCanvasPoint(event);
+          const point = getCanvasRelativePoint(event.currentTarget, event.clientX, event.clientY);
           const distance = Math.hypot(point.x - start.x, point.y - start.y);
 
           if (distance < 10 && !dragging) return;
@@ -115,9 +123,39 @@ export function SelectionStep({
       {previewError ? <p className="error-text">{previewError}</p> : null}
       {previewUrl ? (
         <>
-          <div className="checkerboard preview-box compact-preview">
-            <img src={previewUrl} alt="主体抠图预览" />
+          <div className="checkerboard preview-box compact-preview editable-preview-wrap">
+            <canvas
+              ref={editCanvasRef}
+              className="editable-preview-canvas"
+              onPointerDown={(event) => {
+                if (!editableMask) return;
+                const point = getCanvasRelativePoint(event.currentTarget, event.clientX, event.clientY);
+                const stroke = {
+                  mode: brushMode,
+                  radius: brushSize,
+                  points: [point],
+                } satisfies MaskBrushStroke;
+                onManualMaskStroke(stroke);
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!editableMask || event.buttons !== 1) return;
+                const point = getCanvasRelativePoint(event.currentTarget, event.clientX, event.clientY);
+                const stroke = {
+                  mode: brushMode,
+                  radius: brushSize,
+                  points: [point],
+                } satisfies MaskBrushStroke;
+                onManualMaskStroke(stroke);
+              }}
+              onPointerUp={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+              }}
+            />
           </div>
+          <BrushControls mode={brushMode} size={brushSize} onModeChange={setBrushMode} onSizeChange={setBrushSize} />
           <MaskControls settings={maskSettings} onChange={onMaskSettingsChange} />
         </>
       ) : null}
@@ -142,6 +180,35 @@ export function SelectionStep({
         </button>
       </div>
     </section>
+  );
+}
+
+function BrushControls({
+  mode,
+  size,
+  onModeChange,
+  onSizeChange,
+}: {
+  mode: BrushMode;
+  size: number;
+  onModeChange(mode: BrushMode): void;
+  onSizeChange(size: number): void;
+}) {
+  return (
+    <div className="mask-controls">
+      <div className="segmented-row two-up">
+        <button className={mode === 'erase' ? 'segmented active' : 'segmented'} type="button" onClick={() => onModeChange('erase')}>
+          擦除
+        </button>
+        <button className={mode === 'restore' ? 'segmented active' : 'segmented'} type="button" onClick={() => onModeChange('restore')}>
+          恢复
+        </button>
+      </div>
+      <label className="slider-control">
+        <span>画笔 {size}px</span>
+        <input type="range" min="4" max="48" step="2" value={size} onChange={(event) => onSizeChange(Number(event.target.value))} />
+      </label>
+    </div>
   );
 }
 
@@ -216,4 +283,25 @@ function drawPromptStroke(context: CanvasRenderingContext2D, points: SelectionPo
   }
 
   context.stroke();
+}
+
+function drawEditablePreview(canvas: HTMLCanvasElement, frame: ImageData, mask: Uint8Array) {
+  const context = canvas.getContext('2d');
+  if (!context) return;
+
+  const output = new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height);
+  for (let pixel = 0; pixel < mask.length; pixel += 1) {
+    output.data[pixel * 4 + 3] = mask[pixel] ? 255 : 0;
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.putImageData(output, 0, 0);
+}
+
+function getCanvasRelativePoint(canvas: HTMLCanvasElement, clientX: number, clientY: number): SelectionPoint {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((clientX - rect.left) / rect.width) * canvas.width,
+    y: ((clientY - rect.top) / rect.height) * canvas.height,
+  };
 }

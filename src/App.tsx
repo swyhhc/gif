@@ -6,7 +6,13 @@ import { ResultStep } from './components/ResultStep';
 import { UploadStep } from './components/UploadStep';
 import { encodeTransparentGif, type GifFrame } from './domain/gif';
 import { saveHistoryItem, listHistory, type HistoryItem } from './domain/history';
-import { applyMaskToImageData, hasLikelySubjectMask } from './domain/mask';
+import {
+  applyBinaryMaskToImageData,
+  applyMaskBrushStroke,
+  hasLikelySubjectMask,
+  refineMask,
+  type MaskBrushStroke,
+} from './domain/mask';
 import type { SubjectPrompt } from './domain/selection';
 import { type ExportSettings } from './domain/settings';
 import { captureFirstFrame, extractVideoFrames, loadVideoMetadata, validateVideoMetadata } from './domain/video';
@@ -31,6 +37,8 @@ export function App() {
   const [selectionPreviewStatus, setSelectionPreviewStatus] = useState<string | null>(null);
   const [selectionPreviewError, setSelectionPreviewError] = useState<string | null>(null);
   const [selectionMask, setSelectionMask] = useState<Float32Array | null>(null);
+  const [editableSelectionMask, setEditableSelectionMask] = useState<Uint8Array | null>(null);
+  const [manualBrushStrokes, setManualBrushStrokes] = useState<MaskBrushStroke[]>([]);
   const [maskSettings, setMaskSettings] = useState<MaskSettings>({ invert: true, threshold: 0.5, edgeOffset: 0 });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -103,11 +111,18 @@ export function App() {
           progress: 10 + (index / Math.max(1, frames.length)) * 70,
         });
         const mask = await segmenter.segmentFrame(canvas, framePrompt);
-        gifFrames.push({
-          imageData: applyMaskToImageData(frame.imageData, mask, maskSettings.threshold, {
+        const binaryMask = applyStrokesToMask(
+          refineMask(mask, frame.imageData.width, frame.imageData.height, {
+            threshold: maskSettings.threshold,
             invert: maskSettings.invert,
             edgeOffset: maskSettings.edgeOffset,
           }),
+          frame.imageData.width,
+          frame.imageData.height,
+          scaleBrushStrokes(manualBrushStrokes, firstFrame, frame.imageData),
+        );
+        gifFrames.push({
+          imageData: applyBinaryMaskToImageData(frame.imageData, binaryMask),
           delayMs: Math.round(1000 / nextSettings.fps),
         });
       }
@@ -167,7 +182,8 @@ export function App() {
       }
 
       setSelectionMask(mask);
-      await updateSelectionPreview(firstFrame, mask, maskSettings);
+      setManualBrushStrokes([]);
+      await updateSelectionPreview(firstFrame, mask, maskSettings, []);
       setSelectionPreviewStatus('请检查下面的透明预览，满意后再继续。');
     } catch (event) {
       setSelectionPreviewStatus(null);
@@ -181,6 +197,8 @@ export function App() {
   function clearSelectionPreview() {
     clearSelectionPreviewUrl();
     setSelectionMask(null);
+    setEditableSelectionMask(null);
+    setManualBrushStrokes([]);
     setSelectionPreviewStatus(null);
     setSelectionPreviewError(null);
   }
@@ -195,14 +213,40 @@ export function App() {
   async function handleMaskSettingsChange(nextSettings: MaskSettings) {
     setMaskSettings(nextSettings);
     if (!firstFrame || !selectionMask) return;
-    await updateSelectionPreview(firstFrame, selectionMask, nextSettings);
+    await updateSelectionPreview(firstFrame, selectionMask, nextSettings, manualBrushStrokes);
   }
 
-  async function updateSelectionPreview(frame: ImageData, mask: Float32Array, nextSettings: MaskSettings) {
-    const previewImage = applyMaskToImageData(frame, mask, nextSettings.threshold, {
-      invert: nextSettings.invert,
-      edgeOffset: nextSettings.edgeOffset,
-    });
+  async function handleManualMaskStroke(stroke: MaskBrushStroke) {
+    if (!firstFrame || !editableSelectionMask) return;
+    const nextStrokes = [...manualBrushStrokes, stroke];
+    const nextMask = applyMaskBrushStroke(editableSelectionMask, firstFrame.width, firstFrame.height, stroke);
+    setManualBrushStrokes(nextStrokes);
+    setEditableSelectionMask(nextMask);
+    await updateSelectionPreviewFromBinaryMask(firstFrame, nextMask);
+  }
+
+  async function updateSelectionPreview(
+    frame: ImageData,
+    mask: Float32Array,
+    nextSettings: MaskSettings,
+    strokes: MaskBrushStroke[],
+  ) {
+    const binaryMask = applyStrokesToMask(
+      refineMask(mask, frame.width, frame.height, {
+        threshold: nextSettings.threshold,
+        invert: nextSettings.invert,
+        edgeOffset: nextSettings.edgeOffset,
+      }),
+      frame.width,
+      frame.height,
+      strokes,
+    );
+    setEditableSelectionMask(binaryMask);
+    await updateSelectionPreviewFromBinaryMask(frame, binaryMask);
+  }
+
+  async function updateSelectionPreviewFromBinaryMask(frame: ImageData, binaryMask: Uint8Array) {
+    const previewImage = applyBinaryMaskToImageData(frame, binaryMask);
     const previewUrl = await imageDataToObjectUrl(previewImage);
     setSelectionPreviewUrl((current) => {
       if (current) URL.revokeObjectURL(current);
@@ -218,6 +262,7 @@ export function App() {
           <SelectionStep
             frame={firstFrame}
             previewUrl={selectionPreviewUrl}
+            editableMask={editableSelectionMask}
             previewStatus={selectionPreviewStatus}
             previewError={selectionPreviewError}
             maskSettings={maskSettings}
@@ -225,6 +270,9 @@ export function App() {
             onSelectionChange={clearSelectionPreview}
             onMaskSettingsChange={(nextSettings) => {
               void handleMaskSettingsChange(nextSettings);
+            }}
+            onManualMaskStroke={(stroke) => {
+              void handleManualMaskStroke(stroke);
             }}
             onPreview={(nextPrompt) => {
               void previewSubject(nextPrompt);
@@ -324,4 +372,29 @@ function scalePrompt(
       y: point.y * scaleY,
     })),
   };
+}
+
+function applyStrokesToMask(mask: Uint8Array, width: number, height: number, strokes: MaskBrushStroke[]) {
+  return strokes.reduce((current, stroke) => applyMaskBrushStroke(current, width, height, stroke), mask);
+}
+
+function scaleBrushStrokes(
+  strokes: MaskBrushStroke[],
+  sourceFrame: ImageData | null,
+  targetFrame: ImageData,
+): MaskBrushStroke[] {
+  if (!sourceFrame) return strokes;
+
+  const scaleX = targetFrame.width / sourceFrame.width;
+  const scaleY = targetFrame.height / sourceFrame.height;
+  const radiusScale = (scaleX + scaleY) / 2;
+
+  return strokes.map((stroke) => ({
+    ...stroke,
+    radius: stroke.radius * radiusScale,
+    points: stroke.points.map((point) => ({
+      x: point.x * scaleX,
+      y: point.y * scaleY,
+    })),
+  }));
 }

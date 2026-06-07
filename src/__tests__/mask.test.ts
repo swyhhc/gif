@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyMaskToImageData,
+  applyMaskBrushStroke,
+  applyBinaryMaskToImageData,
   getMaskCoverage,
   hasLikelySubjectMask,
   refineMask,
@@ -53,5 +55,29 @@ describe('mask utilities', () => {
       edgeOffset: -1,
     });
     expect(Array.from(refined)).toEqual([0, 0, 0, 0, 1, 0, 0, 0, 0]);
+  });
+
+  it('erases subject pixels with a brush stroke', () => {
+    const edited = applyMaskBrushStroke(new Uint8Array([1, 1, 1, 1]), 2, 2, {
+      mode: 'erase',
+      radius: 0,
+      points: [{ x: 1, y: 0 }],
+    });
+    expect(Array.from(edited)).toEqual([1, 0, 1, 1]);
+  });
+
+  it('restores subject pixels with a brush stroke', () => {
+    const edited = applyMaskBrushStroke(new Uint8Array([0, 0, 0, 0]), 2, 2, {
+      mode: 'restore',
+      radius: 1,
+      points: [{ x: 0, y: 0 }],
+    });
+    expect(Array.from(edited)).toEqual([1, 1, 1, 0]);
+  });
+
+  it('composes image data from an edited binary mask', () => {
+    const source = new ImageData(new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 255, 255]), 2, 1);
+    const result = applyBinaryMaskToImageData(source, new Uint8Array([0, 1]));
+    expect(Array.from(result.data)).toEqual([255, 0, 0, 0, 0, 0, 255, 255]);
   });
 });
