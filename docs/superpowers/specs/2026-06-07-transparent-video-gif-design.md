@@ -24,7 +24,7 @@ The main use case is making reaction GIFs, stickers, and reusable transparent vi
 6. The user chooses export settings:
    - Format: transparent GIF by default.
    - Resolution: 240px, 320px, or 480px on the longest edge.
-   - Frame rate: 6, 8, or 12 fps.
+   - Frame rate: 6 or 8 fps by default, with 12 fps available as a manual high-motion option.
    - Quality mode: standard or high quality.
 7. The user starts processing.
 8. The app extracts frames, segments the selected subject, applies transparent background, and encodes the result.
@@ -35,7 +35,7 @@ The main use case is making reaction GIFs, stickers, and reusable transparent vi
 ## MVP Constraints
 
 - Maximum input duration: 10 seconds.
-- Recommended default: 320px, 8 fps, transparent GIF.
+- Recommended default: 320px, 6 fps, transparent GIF.
 - Maximum first-version export size: 480px longest edge.
 - History count: 3 exports.
 - Processing is local to the browser. The app should not upload video files anywhere.
@@ -77,10 +77,11 @@ GIF has only 1-bit transparency per pixel, so soft mask edges must be thresholde
 
 Initial export presets:
 
-- Small: 240px, 8 fps.
-- Default: 320px, 8 fps.
-- High quality: 480px, 8 fps.
-- Motion smooth: 320px, 12 fps.
+- Small: 240px, 6 fps.
+- Default: 320px, 6 fps.
+- Balanced motion: 320px, 8 fps.
+- High quality: 480px, 6 fps.
+- Motion smooth: 320px, 12 fps, manually selected.
 
 The app should warn that higher resolution and higher frame rate increase processing time and file size.
 

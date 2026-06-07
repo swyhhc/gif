@@ -320,9 +320,10 @@ export type ExportSettings = {
 };
 
 export const EXPORT_PRESETS = {
-  small: { format: 'gif', longestEdge: 240, fps: 8, quality: 'standard' },
-  default: { format: 'gif', longestEdge: 320, fps: 8, quality: 'standard' },
-  highQuality: { format: 'gif', longestEdge: 480, fps: 8, quality: 'high' },
+  small: { format: 'gif', longestEdge: 240, fps: 6, quality: 'standard' },
+  default: { format: 'gif', longestEdge: 320, fps: 6, quality: 'standard' },
+  balancedMotion: { format: 'gif', longestEdge: 320, fps: 8, quality: 'standard' },
+  highQuality: { format: 'gif', longestEdge: 480, fps: 6, quality: 'high' },
   smoothMotion: { format: 'gif', longestEdge: 320, fps: 12, quality: 'standard' },
 } as const satisfies Record<string, ExportSettings>;
 
@@ -906,7 +907,7 @@ Create `SelectionStep.tsx` with a canvas preview and touch/mouse drag handling. 
 
 - [ ] **Step 3: Add settings component**
 
-Create `SettingsStep.tsx` with segmented buttons for 240/320/480, 6/8/12 fps, and standard/high quality. Use `validateExportSettings` before calling `onStart(settings)`.
+Create `SettingsStep.tsx` with segmented buttons for 240/320/480, default-first 6/8 fps choices, a manually selectable 12 fps high-motion choice, and standard/high quality. Use `validateExportSettings` before calling `onStart(settings)`.
 
 - [ ] **Step 4: Wire app workflow**
 
@@ -1022,7 +1023,7 @@ git commit -m "fix: polish mobile workflow"
 
 ## Self-Review
 
-- Spec coverage: This plan covers mobile-only browser processing, upload, first-frame box selection, 10-second limit, transparent GIF export, 240/320/480 resolution choices, 6/8/12 fps choices, retry, save, and latest-3 history.
+- Spec coverage: This plan covers mobile-only browser processing, upload, first-frame box selection, 10-second limit, transparent GIF export, 240/320/480 resolution choices, 6/8 fps defaults with 12 fps manual high-motion selection, retry, save, and latest-3 history.
 - Known implementation risk: MediaPipe browser API type names may differ slightly from the adapter sketch. Task 8 isolates that risk to `src/mediapipe/interactiveSegmenter.ts`.
 - GIF limitation covered: Task 5 thresholds alpha and Task 7 uses transparent GIF frame encoding, matching GIF's binary transparency behavior.
 - No server work is included.
