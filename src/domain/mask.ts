@@ -15,3 +15,23 @@ export function applyMaskToImageData(source: ImageData, mask: Float32Array, thre
 
   return output;
 }
+
+export function getMaskCoverage(mask: Float32Array, threshold = 0.5): number {
+  if (mask.length === 0) {
+    return 0;
+  }
+
+  let visiblePixels = 0;
+  for (const value of mask) {
+    if (value >= threshold) {
+      visiblePixels += 1;
+    }
+  }
+
+  return Number((visiblePixels / mask.length).toFixed(4));
+}
+
+export function hasLikelySubjectMask(mask: Float32Array, threshold = 0.5): boolean {
+  const coverage = getMaskCoverage(mask, threshold);
+  return coverage >= 0.02 && coverage <= 0.9;
+}

@@ -3,12 +3,18 @@ import {
   clampSelection,
   createSelectionFromPoint,
   hasUsableSelection,
+  normalizeSelection,
   type SelectionRect,
 } from '../domain/selection';
 
 type SelectionStepProps = {
   frame: ImageData;
+  previewUrl: string | null;
+  previewStatus: string | null;
+  previewError: string | null;
   onBack(): void;
+  onSelectionChange(): void;
+  onPreview(selection: SelectionRect): void;
   onConfirm(selection: SelectionRect): void;
 };
 
@@ -17,8 +23,19 @@ type Point = {
   y: number;
 };
 
-export function SelectionStep({ frame, onBack, onConfirm }: SelectionStepProps) {
+export function SelectionStep({
+  frame,
+  previewUrl,
+  previewStatus,
+  previewError,
+  onBack,
+  onSelectionChange,
+  onPreview,
+  onConfirm,
+}: SelectionStepProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [start, setStart] = useState<Point | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [selection, setSelection] = useState<SelectionRect | null>(null);
 
   useEffect(() => {
@@ -44,17 +61,50 @@ export function SelectionStep({ frame, onBack, onConfirm }: SelectionStepProps) 
     <section className="step-panel">
       <div className="step-heading">
         <p className="eyebrow">第一帧</p>
-        <h1>点一下主体</h1>
+        <h1>选择主体</h1>
       </div>
       <canvas
         ref={canvasRef}
         className="selection-canvas"
         onPointerDown={(event) => {
           const point = getCanvasPoint(event);
+          onSelectionChange();
+          setStart(point);
+          setDragging(false);
           setSelection(createSelectionFromPoint(point, frame.width, frame.height));
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (!start) return;
+          const point = getCanvasPoint(event);
+          const distance = Math.hypot(point.x - start.x, point.y - start.y);
+
+          if (distance < 10 && !dragging) return;
+
+          setDragging(true);
+          setSelection(
+            clampSelection(
+              normalizeSelection({ x: start.x, y: start.y, width: point.x - start.x, height: point.y - start.y }),
+              frame.width,
+              frame.height,
+            ),
+          );
+        }}
+        onPointerUp={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+          setStart(null);
         }}
       />
-      <p className="hint-text">点在要保留的人或物上，系统会用这个位置识别主体。</p>
+      <p className="hint-text">点一下主体，或拖一个框辅助定位。下一步会先显示真正抠出来的透明预览。</p>
+      {previewStatus ? <p className="hint-text">{previewStatus}</p> : null}
+      {previewError ? <p className="error-text">{previewError}</p> : null}
+      {previewUrl ? (
+        <div className="checkerboard preview-box compact-preview">
+          <img src={previewUrl} alt="主体抠图预览" />
+        </div>
+      ) : null}
       <div className="button-row">
         <button className="secondary-button" type="button" onClick={onBack}>
           返回
@@ -63,9 +113,16 @@ export function SelectionStep({ frame, onBack, onConfirm }: SelectionStepProps) 
           className="primary-button"
           type="button"
           disabled={!confirmedSelection || !hasUsableSelection(confirmedSelection)}
-          onClick={() => confirmedSelection && onConfirm(confirmedSelection)}
+          onClick={() => {
+            if (!confirmedSelection) return;
+            if (previewUrl) {
+              onConfirm(confirmedSelection);
+            } else {
+              onPreview(confirmedSelection);
+            }
+          }}
         >
-          确认主体
+          {previewUrl ? '满意，继续' : '生成抠图预览'}
         </button>
       </div>
     </section>

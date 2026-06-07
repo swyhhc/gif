@@ -6,7 +6,7 @@ import { ResultStep } from './components/ResultStep';
 import { UploadStep } from './components/UploadStep';
 import { encodeTransparentGif, type GifFrame } from './domain/gif';
 import { saveHistoryItem, listHistory, type HistoryItem } from './domain/history';
-import { applyMaskToImageData } from './domain/mask';
+import { applyMaskToImageData, hasLikelySubjectMask } from './domain/mask';
 import type { SelectionRect } from './domain/selection';
 import { type ExportSettings } from './domain/settings';
 import { captureFirstFrame, extractVideoFrames, loadVideoMetadata, validateVideoMetadata } from './domain/video';
@@ -27,6 +27,9 @@ export function App() {
   const [settings, setSettings] = useState<ExportSettings | null>(null);
   const [progress, setProgress] = useState<ProgressState>({ phase: '准备中', progress: 0 });
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [selectionPreviewUrl, setSelectionPreviewUrl] = useState<string | null>(null);
+  const [selectionPreviewStatus, setSelectionPreviewStatus] = useState<string | null>(null);
+  const [selectionPreviewError, setSelectionPreviewError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef(false);
@@ -38,8 +41,9 @@ export function App() {
   useEffect(() => {
     return () => {
       if (resultUrl) URL.revokeObjectURL(resultUrl);
+      if (selectionPreviewUrl) URL.revokeObjectURL(selectionPreviewUrl);
     };
-  }, [resultUrl]);
+  }, [resultUrl, selectionPreviewUrl]);
 
   async function handleVideoSelected(file: File) {
     setError(null);
@@ -56,6 +60,7 @@ export function App() {
       setVideoFile(file);
       setFirstFrame(frame);
       setSelection(null);
+      clearSelectionPreview();
       setStep('select');
     } catch (event) {
       setError(event instanceof Error ? event.message : '无法读取这个视频。');
@@ -129,6 +134,56 @@ export function App() {
     }
   }
 
+  async function previewSubject(nextSelection: SelectionRect) {
+    if (!firstFrame) return;
+
+    setSelection(nextSelection);
+    setSelectionPreviewError(null);
+    setSelectionPreviewStatus('正在识别主体...');
+
+    let segmenter: Awaited<ReturnType<typeof createInteractiveSegmenter>> | null = null;
+
+    try {
+      segmenter = await createInteractiveSegmenter();
+      const canvas = imageDataToCanvas(firstFrame);
+      const mask = await segmenter.segmentFrame(canvas, nextSelection);
+
+      if (!hasLikelySubjectMask(mask, 0.5)) {
+        setSelectionPreviewStatus(null);
+        setSelectionPreviewError('这次识别不太像一个主体，请点在主体中间或重新框选。');
+        clearSelectionPreviewUrl();
+        return;
+      }
+
+      const previewImage = applyMaskToImageData(firstFrame, mask, 0.5);
+      const previewUrl = await imageDataToObjectUrl(previewImage);
+      setSelectionPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return previewUrl;
+      });
+      setSelectionPreviewStatus('请检查下面的透明预览，满意后再继续。');
+    } catch (event) {
+      setSelectionPreviewStatus(null);
+      setSelectionPreviewError(event instanceof Error ? event.message : '主体识别失败，请重新选择。');
+      clearSelectionPreviewUrl();
+    } finally {
+      segmenter?.close();
+    }
+  }
+
+  function clearSelectionPreview() {
+    clearSelectionPreviewUrl();
+    setSelectionPreviewStatus(null);
+    setSelectionPreviewError(null);
+  }
+
+  function clearSelectionPreviewUrl() {
+    setSelectionPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }
+
   return (
     <main className="app-shell">
       <div className="tool-panel">
@@ -136,7 +191,14 @@ export function App() {
         {step === 'select' && firstFrame ? (
           <SelectionStep
             frame={firstFrame}
+            previewUrl={selectionPreviewUrl}
+            previewStatus={selectionPreviewStatus}
+            previewError={selectionPreviewError}
             onBack={() => setStep('upload')}
+            onSelectionChange={clearSelectionPreview}
+            onPreview={(nextSelection) => {
+              void previewSubject(nextSelection);
+            }}
             onConfirm={(nextSelection) => {
               setSelection(nextSelection);
               setStep('settings');
@@ -164,11 +226,15 @@ export function App() {
           <ResultStep
             resultUrl={resultUrl}
             history={history}
-            onRetry={() => setStep('select')}
+            onRetry={() => {
+              clearSelectionPreview();
+              setStep('select');
+            }}
             onNewVideo={() => {
               setVideoFile(null);
               setFirstFrame(null);
               setSelection(null);
+              clearSelectionPreview();
               setSettings(null);
               setStep('upload');
             }}
@@ -191,6 +257,20 @@ function imageDataToCanvas(imageData: ImageData): HTMLCanvasElement {
   }
   context.putImageData(imageData, 0, 0);
   return canvas;
+}
+
+function imageDataToObjectUrl(imageData: ImageData): Promise<string> {
+  const canvas = imageDataToCanvas(imageData);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('无法生成预览图。'));
+        return;
+      }
+      resolve(URL.createObjectURL(blob));
+    }, 'image/png');
+  });
 }
 
 function scaleSelection(

@@ -218,6 +218,14 @@ h1 {
   max-height: 58vh;
 }
 
+.compact-preview {
+  min-height: 180px;
+}
+
+.compact-preview img {
+  max-height: 34vh;
+}
+
 .history-list {
   display: grid;
   gap: 8px;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyMaskToImageData, thresholdAlpha } from '../domain/mask';
+import { applyMaskToImageData, getMaskCoverage, hasLikelySubjectMask, thresholdAlpha } from '../domain/mask';
 
 describe('mask utilities', () => {
   it('thresholds alpha for GIF transparency', () => {
@@ -18,5 +18,11 @@ describe('mask utilities', () => {
     expect(() => applyMaskToImageData(source, new Float32Array([1, 0]), 0.5)).toThrow(
       'Mask size must match image size.',
     );
+  });
+
+  it('reports mask coverage so bad subject previews can be rejected', () => {
+    expect(getMaskCoverage(new Float32Array([1, 0, 1, 0]), 0.5)).toBe(0.5);
+    expect(hasLikelySubjectMask(new Float32Array([0, 0, 0, 0]), 0.5)).toBe(false);
+    expect(hasLikelySubjectMask(new Float32Array([1, 0, 0, 0]), 0.5)).toBe(true);
   });
 });
