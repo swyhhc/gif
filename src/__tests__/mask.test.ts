@@ -13,6 +13,12 @@ describe('mask utilities', () => {
     expect(Array.from(result.data)).toEqual([255, 0, 0, 255, 0, 0, 255, 0]);
   });
 
+  it('can invert mask values when the model labels the subject as zero', () => {
+    const source = new ImageData(new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 255, 255]), 2, 1);
+    const result = applyMaskToImageData(source, new Float32Array([0, 1]), 0.5, { invert: true });
+    expect(Array.from(result.data)).toEqual([255, 0, 0, 255, 0, 0, 255, 0]);
+  });
+
   it('fails loudly when mask size does not match image size', () => {
     const source = new ImageData(new Uint8ClampedArray([255, 0, 0, 255]), 1, 1);
     expect(() => applyMaskToImageData(source, new Float32Array([1, 0]), 0.5)).toThrow(

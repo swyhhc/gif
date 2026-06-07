@@ -102,7 +102,9 @@ export function App() {
         });
         const mask = await segmenter.segmentFrame(canvas, framePrompt);
         gifFrames.push({
-          imageData: applyMaskToImageData(frame.imageData, mask, nextSettings.quality === 'high' ? 0.42 : 0.5),
+          imageData: applyMaskToImageData(frame.imageData, mask, nextSettings.quality === 'high' ? 0.42 : 0.5, {
+            invert: true,
+          }),
           delayMs: Math.round(1000 / nextSettings.fps),
         });
       }
@@ -155,7 +157,7 @@ export function App() {
         return;
       }
 
-      const previewImage = applyMaskToImageData(firstFrame, mask, 0.5);
+      const previewImage = applyMaskToImageData(firstFrame, mask, 0.5, { invert: true });
       const previewUrl = await imageDataToObjectUrl(previewImage);
       setSelectionPreviewUrl((current) => {
         if (current) URL.revokeObjectURL(current);
