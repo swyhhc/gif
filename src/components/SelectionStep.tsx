@@ -16,10 +16,18 @@ type SelectionStepProps = {
   previewUrl: string | null;
   previewStatus: string | null;
   previewError: string | null;
+  maskSettings: MaskSettings;
   onBack(): void;
   onSelectionChange(): void;
+  onMaskSettingsChange(settings: MaskSettings): void;
   onPreview(prompt: SubjectPrompt): void;
   onConfirm(prompt: SubjectPrompt): void;
+};
+
+export type MaskSettings = {
+  invert: boolean;
+  threshold: number;
+  edgeOffset: number;
 };
 
 type Point = {
@@ -32,8 +40,10 @@ export function SelectionStep({
   previewUrl,
   previewStatus,
   previewError,
+  maskSettings,
   onBack,
   onSelectionChange,
+  onMaskSettingsChange,
   onPreview,
   onConfirm,
 }: SelectionStepProps) {
@@ -104,9 +114,12 @@ export function SelectionStep({
       {previewStatus ? <p className="hint-text">{previewStatus}</p> : null}
       {previewError ? <p className="error-text">{previewError}</p> : null}
       {previewUrl ? (
-        <div className="checkerboard preview-box compact-preview">
-          <img src={previewUrl} alt="主体抠图预览" />
-        </div>
+        <>
+          <div className="checkerboard preview-box compact-preview">
+            <img src={previewUrl} alt="主体抠图预览" />
+          </div>
+          <MaskControls settings={maskSettings} onChange={onMaskSettingsChange} />
+        </>
       ) : null}
       <div className="button-row">
         <button className="secondary-button" type="button" onClick={onBack}>
@@ -129,6 +142,39 @@ export function SelectionStep({
         </button>
       </div>
     </section>
+  );
+}
+
+function MaskControls({ settings, onChange }: { settings: MaskSettings; onChange(settings: MaskSettings): void }) {
+  return (
+    <div className="mask-controls">
+      <label className="toggle-row">
+        <input type="checkbox" checked={settings.invert} onChange={(event) => onChange({ ...settings, invert: event.target.checked })} />
+        <span>反选</span>
+      </label>
+      <label className="slider-control">
+        <span>阈值 {settings.threshold.toFixed(2)}</span>
+        <input
+          type="range"
+          min="0.2"
+          max="0.8"
+          step="0.05"
+          value={settings.threshold}
+          onChange={(event) => onChange({ ...settings, threshold: Number(event.target.value) })}
+        />
+      </label>
+      <label className="slider-control">
+        <span>边缘 {settings.edgeOffset > 0 ? `+${settings.edgeOffset}` : settings.edgeOffset}</span>
+        <input
+          type="range"
+          min="-3"
+          max="3"
+          step="1"
+          value={settings.edgeOffset}
+          onChange={(event) => onChange({ ...settings, edgeOffset: Number(event.target.value) })}
+        />
+      </label>
+    </div>
   );
 }
 

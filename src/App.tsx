@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { SettingsStep } from './components/SettingsStep';
-import { SelectionStep } from './components/SelectionStep';
+import { SelectionStep, type MaskSettings } from './components/SelectionStep';
 import { ProcessingStep } from './components/ProcessingStep';
 import { ResultStep } from './components/ResultStep';
 import { UploadStep } from './components/UploadStep';
@@ -30,6 +30,8 @@ export function App() {
   const [selectionPreviewUrl, setSelectionPreviewUrl] = useState<string | null>(null);
   const [selectionPreviewStatus, setSelectionPreviewStatus] = useState<string | null>(null);
   const [selectionPreviewError, setSelectionPreviewError] = useState<string | null>(null);
+  const [selectionMask, setSelectionMask] = useState<Float32Array | null>(null);
+  const [maskSettings, setMaskSettings] = useState<MaskSettings>({ invert: true, threshold: 0.5, edgeOffset: 0 });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef(false);
@@ -102,8 +104,9 @@ export function App() {
         });
         const mask = await segmenter.segmentFrame(canvas, framePrompt);
         gifFrames.push({
-          imageData: applyMaskToImageData(frame.imageData, mask, nextSettings.quality === 'high' ? 0.42 : 0.5, {
-            invert: true,
+          imageData: applyMaskToImageData(frame.imageData, mask, maskSettings.threshold, {
+            invert: maskSettings.invert,
+            edgeOffset: maskSettings.edgeOffset,
           }),
           delayMs: Math.round(1000 / nextSettings.fps),
         });
@@ -150,19 +153,21 @@ export function App() {
       const canvas = imageDataToCanvas(firstFrame);
       const mask = await segmenter.segmentFrame(canvas, nextPrompt);
 
-      if (!hasLikelySubjectMask(mask, 0.5)) {
+      if (
+        !hasLikelySubjectMask(mask, firstFrame.width, firstFrame.height, {
+          threshold: maskSettings.threshold,
+          invert: maskSettings.invert,
+          edgeOffset: maskSettings.edgeOffset,
+        })
+      ) {
         setSelectionPreviewStatus(null);
         setSelectionPreviewError('这次识别不太像一个主体，请点在主体中间或重新框选。');
         clearSelectionPreviewUrl();
         return;
       }
 
-      const previewImage = applyMaskToImageData(firstFrame, mask, 0.5, { invert: true });
-      const previewUrl = await imageDataToObjectUrl(previewImage);
-      setSelectionPreviewUrl((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return previewUrl;
-      });
+      setSelectionMask(mask);
+      await updateSelectionPreview(firstFrame, mask, maskSettings);
       setSelectionPreviewStatus('请检查下面的透明预览，满意后再继续。');
     } catch (event) {
       setSelectionPreviewStatus(null);
@@ -175,6 +180,7 @@ export function App() {
 
   function clearSelectionPreview() {
     clearSelectionPreviewUrl();
+    setSelectionMask(null);
     setSelectionPreviewStatus(null);
     setSelectionPreviewError(null);
   }
@@ -183,6 +189,24 @@ export function App() {
     setSelectionPreviewUrl((current) => {
       if (current) URL.revokeObjectURL(current);
       return null;
+    });
+  }
+
+  async function handleMaskSettingsChange(nextSettings: MaskSettings) {
+    setMaskSettings(nextSettings);
+    if (!firstFrame || !selectionMask) return;
+    await updateSelectionPreview(firstFrame, selectionMask, nextSettings);
+  }
+
+  async function updateSelectionPreview(frame: ImageData, mask: Float32Array, nextSettings: MaskSettings) {
+    const previewImage = applyMaskToImageData(frame, mask, nextSettings.threshold, {
+      invert: nextSettings.invert,
+      edgeOffset: nextSettings.edgeOffset,
+    });
+    const previewUrl = await imageDataToObjectUrl(previewImage);
+    setSelectionPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return previewUrl;
     });
   }
 
@@ -196,8 +220,12 @@ export function App() {
             previewUrl={selectionPreviewUrl}
             previewStatus={selectionPreviewStatus}
             previewError={selectionPreviewError}
+            maskSettings={maskSettings}
             onBack={() => setStep('upload')}
             onSelectionChange={clearSelectionPreview}
+            onMaskSettingsChange={(nextSettings) => {
+              void handleMaskSettingsChange(nextSettings);
+            }}
             onPreview={(nextPrompt) => {
               void previewSubject(nextPrompt);
             }}

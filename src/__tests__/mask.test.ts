@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyMaskToImageData, getMaskCoverage, hasLikelySubjectMask, thresholdAlpha } from '../domain/mask';
+import {
+  applyMaskToImageData,
+  getMaskCoverage,
+  hasLikelySubjectMask,
+  refineMask,
+  thresholdAlpha,
+} from '../domain/mask';
 
 describe('mask utilities', () => {
   it('thresholds alpha for GIF transparency', () => {
@@ -28,7 +34,24 @@ describe('mask utilities', () => {
 
   it('reports mask coverage so bad subject previews can be rejected', () => {
     expect(getMaskCoverage(new Float32Array([1, 0, 1, 0]), 0.5)).toBe(0.5);
-    expect(hasLikelySubjectMask(new Float32Array([0, 0, 0, 0]), 0.5)).toBe(false);
-    expect(hasLikelySubjectMask(new Float32Array([1, 0, 0, 0]), 0.5)).toBe(true);
+    expect(hasLikelySubjectMask(new Float32Array([0, 0, 0, 0]), 2, 2, { threshold: 0.5 })).toBe(false);
+    expect(hasLikelySubjectMask(new Float32Array([1, 0, 0, 0]), 2, 2, { threshold: 0.5 })).toBe(true);
+    expect(hasLikelySubjectMask(new Float32Array([0, 1, 1, 1]), 2, 2, { threshold: 0.5, invert: true })).toBe(true);
+  });
+
+  it('expands mask edges', () => {
+    const refined = refineMask(new Float32Array([0, 0, 0, 0, 1, 0, 0, 0, 0]), 3, 3, {
+      threshold: 0.5,
+      edgeOffset: 1,
+    });
+    expect(Array.from(refined)).toEqual([0, 1, 0, 1, 1, 1, 0, 1, 0]);
+  });
+
+  it('shrinks mask edges', () => {
+    const refined = refineMask(new Float32Array([1, 1, 1, 1, 1, 1, 1, 1, 1]), 3, 3, {
+      threshold: 0.5,
+      edgeOffset: -1,
+    });
+    expect(Array.from(refined)).toEqual([0, 0, 0, 0, 1, 0, 0, 0, 0]);
   });
 });
