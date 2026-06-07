@@ -5,6 +5,7 @@ export function thresholdAlpha(value: number, threshold: number): 0 | 255 {
 export type MaskOptions = {
   invert?: boolean;
   edgeOffset?: number;
+  fillHoles?: boolean;
 };
 
 export type RefineMaskOptions = MaskOptions & {
@@ -66,7 +67,7 @@ export function refineMask(mask: Float32Array, width: number, height: number, op
 
   const edgeOffset = Math.max(-3, Math.min(3, Math.round(options.edgeOffset ?? 0)));
   if (edgeOffset === 0) {
-    return binary;
+    return options.fillHoles === false ? binary : fillMaskHoles(binary, width, height);
   }
 
   let current: Uint8Array<ArrayBufferLike> = binary;
@@ -76,7 +77,7 @@ export function refineMask(mask: Float32Array, width: number, height: number, op
     current = operation(current, width, height);
   }
 
-  return current;
+  return options.fillHoles === false ? current : fillMaskHoles(current, width, height);
 }
 
 export function applyMaskBrushStroke(mask: Uint8Array, width: number, height: number, stroke: MaskBrushStroke): Uint8Array {
@@ -107,6 +108,48 @@ export function applyMaskBrushStrokes(
   strokes: MaskBrushStroke[],
 ): Uint8Array {
   return strokes.reduce((current, stroke) => applyMaskBrushStroke(current, width, height, stroke), mask);
+}
+
+export function fillMaskHoles(mask: Uint8Array, width: number, height: number): Uint8Array {
+  const outside = new Uint8Array(mask.length);
+  const queue: number[] = [];
+
+  function enqueueIfOutsideBackground(x: number, y: number) {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const index = y * width + x;
+    if (mask[index] || outside[index]) return;
+    outside[index] = 1;
+    queue.push(index);
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    enqueueIfOutsideBackground(x, 0);
+    enqueueIfOutsideBackground(x, height - 1);
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    enqueueIfOutsideBackground(0, y);
+    enqueueIfOutsideBackground(width - 1, y);
+  }
+
+  while (queue.length > 0) {
+    const index = queue.shift() as number;
+    const x = index % width;
+    const y = Math.floor(index / width);
+    enqueueIfOutsideBackground(x + 1, y);
+    enqueueIfOutsideBackground(x - 1, y);
+    enqueueIfOutsideBackground(x, y + 1);
+    enqueueIfOutsideBackground(x, y - 1);
+  }
+
+  const output = new Uint8Array(mask);
+  for (let index = 0; index < mask.length; index += 1) {
+    if (!mask[index] && !outside[index]) {
+      output[index] = 1;
+    }
+  }
+
+  return output;
 }
 
 export function getMaskCoverage(mask: Float32Array, threshold = 0.5): number {

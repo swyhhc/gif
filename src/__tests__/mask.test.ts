@@ -3,6 +3,7 @@ import {
   applyMaskToImageData,
   applyMaskBrushStroke,
   applyMaskBrushStrokes,
+  fillMaskHoles,
   applyBinaryMaskToImageData,
   getMaskCoverage,
   hasLikelySubjectMask,
@@ -88,5 +89,26 @@ describe('mask utilities', () => {
       { mode: 'restore', radius: 0, points: [{ x: 0, y: 0 }] },
     ]);
     expect(Array.from(edited)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('fills internal holes while preserving outside background', () => {
+    const filled = fillMaskHoles(
+      new Uint8Array([
+        0, 0, 0, 0, 0,
+        0, 1, 1, 1, 0,
+        0, 1, 0, 1, 0,
+        0, 1, 1, 1, 0,
+        0, 0, 0, 0, 0,
+      ]),
+      5,
+      5,
+    );
+    expect(Array.from(filled)).toEqual([
+      0, 0, 0, 0, 0,
+      0, 1, 1, 1, 0,
+      0, 1, 1, 1, 0,
+      0, 1, 1, 1, 0,
+      0, 0, 0, 0, 0,
+    ]);
   });
 });
