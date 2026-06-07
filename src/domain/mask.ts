@@ -100,6 +100,15 @@ export function applyMaskBrushStroke(mask: Uint8Array, width: number, height: nu
   return output;
 }
 
+export function applyMaskBrushStrokes(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  strokes: MaskBrushStroke[],
+): Uint8Array {
+  return strokes.reduce((current, stroke) => applyMaskBrushStroke(current, width, height, stroke), mask);
+}
+
 export function getMaskCoverage(mask: Float32Array, threshold = 0.5): number {
   if (mask.length === 0) {
     return 0;

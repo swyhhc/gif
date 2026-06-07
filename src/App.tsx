@@ -9,6 +9,7 @@ import { saveHistoryItem, listHistory, type HistoryItem } from './domain/history
 import {
   applyBinaryMaskToImageData,
   applyMaskBrushStroke,
+  applyMaskBrushStrokes,
   hasLikelySubjectMask,
   refineMask,
   type MaskBrushStroke,
@@ -225,6 +226,13 @@ export function App() {
     await updateSelectionPreviewFromBinaryMask(firstFrame, nextMask);
   }
 
+  async function undoManualMaskStroke() {
+    if (!firstFrame || !selectionMask || manualBrushStrokes.length === 0) return;
+    const nextStrokes = manualBrushStrokes.slice(0, -1);
+    setManualBrushStrokes(nextStrokes);
+    await updateSelectionPreview(firstFrame, selectionMask, maskSettings, nextStrokes);
+  }
+
   async function updateSelectionPreview(
     frame: ImageData,
     mask: Float32Array,
@@ -273,6 +281,10 @@ export function App() {
             }}
             onManualMaskStroke={(stroke) => {
               void handleManualMaskStroke(stroke);
+            }}
+            canUndoManualMask={manualBrushStrokes.length > 0}
+            onUndoManualMask={() => {
+              void undoManualMaskStroke();
             }}
             onPreview={(nextPrompt) => {
               void previewSubject(nextPrompt);
@@ -375,7 +387,7 @@ function scalePrompt(
 }
 
 function applyStrokesToMask(mask: Uint8Array, width: number, height: number, strokes: MaskBrushStroke[]) {
-  return strokes.reduce((current, stroke) => applyMaskBrushStroke(current, width, height, stroke), mask);
+  return applyMaskBrushStrokes(mask, width, height, strokes);
 }
 
 function scaleBrushStrokes(

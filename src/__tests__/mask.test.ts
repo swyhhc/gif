@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyMaskToImageData,
   applyMaskBrushStroke,
+  applyMaskBrushStrokes,
   applyBinaryMaskToImageData,
   getMaskCoverage,
   hasLikelySubjectMask,
@@ -79,5 +80,13 @@ describe('mask utilities', () => {
     const source = new ImageData(new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 255, 255]), 2, 1);
     const result = applyBinaryMaskToImageData(source, new Uint8Array([0, 1]));
     expect(Array.from(result.data)).toEqual([255, 0, 0, 0, 0, 0, 255, 255]);
+  });
+
+  it('replays brush strokes in order', () => {
+    const edited = applyMaskBrushStrokes(new Uint8Array([1, 1, 1, 1]), 2, 2, [
+      { mode: 'erase', radius: 0, points: [{ x: 0, y: 0 }] },
+      { mode: 'restore', radius: 0, points: [{ x: 0, y: 0 }] },
+    ]);
+    expect(Array.from(edited)).toEqual([1, 1, 1, 1]);
   });
 });

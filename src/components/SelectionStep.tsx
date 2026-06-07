@@ -22,6 +22,8 @@ type SelectionStepProps = {
   onSelectionChange(): void;
   onMaskSettingsChange(settings: MaskSettings): void;
   onManualMaskStroke(stroke: MaskBrushStroke): void;
+  canUndoManualMask: boolean;
+  onUndoManualMask(): void;
   onPreview(prompt: SubjectPrompt): void;
   onConfirm(prompt: SubjectPrompt): void;
 };
@@ -39,6 +41,12 @@ type Point = {
   y: number;
 };
 
+type ViewTransform = {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+};
+
 export function SelectionStep({
   frame,
   previewUrl,
@@ -50,6 +58,8 @@ export function SelectionStep({
   onSelectionChange,
   onMaskSettingsChange,
   onManualMaskStroke,
+  canUndoManualMask,
+  onUndoManualMask,
   onPreview,
   onConfirm,
 }: SelectionStepProps) {
@@ -61,6 +71,9 @@ export function SelectionStep({
   const [prompt, setPrompt] = useState<SubjectPrompt | null>(null);
   const [brushMode, setBrushMode] = useState<BrushMode>('erase');
   const [brushSize, setBrushSize] = useState(16);
+  const [view, setView] = useState<ViewTransform>({ scale: 1, offsetX: 0, offsetY: 0 });
+  const editPointersRef = useRef(new Map<number, Point>());
+  const pinchStartRef = useRef<{ distance: number; midpoint: Point; view: ViewTransform } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -75,8 +88,8 @@ export function SelectionStep({
     if (!canvas || !editableMask) return;
     canvas.width = frame.width;
     canvas.height = frame.height;
-    drawEditablePreview(canvas, frame, editableMask);
-  }, [editableMask, frame]);
+    drawEditablePreview(canvas, frame, editableMask, view);
+  }, [editableMask, frame, view]);
 
   const confirmedSelection = prompt ? clampSelection(prompt.bounds, frame.width, frame.height) : null;
 
@@ -129,18 +142,36 @@ export function SelectionStep({
               className="editable-preview-canvas"
               onPointerDown={(event) => {
                 if (!editableMask) return;
-                const point = getCanvasRelativePoint(event.currentTarget, event.clientX, event.clientY);
+                const screenPoint = getCanvasRelativePoint(event.currentTarget, event.clientX, event.clientY);
+                editPointersRef.current.set(event.pointerId, screenPoint);
+                event.currentTarget.setPointerCapture(event.pointerId);
+
+                if (editPointersRef.current.size >= 2) {
+                  pinchStartRef.current = getPinchStart(editPointersRef.current, view);
+                  return;
+                }
+
+                const point = screenToImagePoint(screenPoint, view);
                 const stroke = {
                   mode: brushMode,
                   radius: brushSize,
                   points: [point],
                 } satisfies MaskBrushStroke;
                 onManualMaskStroke(stroke);
-                event.currentTarget.setPointerCapture(event.pointerId);
               }}
               onPointerMove={(event) => {
-                if (!editableMask || event.buttons !== 1) return;
-                const point = getCanvasRelativePoint(event.currentTarget, event.clientX, event.clientY);
+                if (!editableMask) return;
+                const screenPoint = getCanvasRelativePoint(event.currentTarget, event.clientX, event.clientY);
+                if (!editPointersRef.current.has(event.pointerId)) return;
+                editPointersRef.current.set(event.pointerId, screenPoint);
+
+                if (editPointersRef.current.size >= 2 && pinchStartRef.current) {
+                  setView(getNextPinchView(editPointersRef.current, pinchStartRef.current));
+                  return;
+                }
+
+                if (event.buttons !== 1) return;
+                const point = screenToImagePoint(screenPoint, view);
                 const stroke = {
                   mode: brushMode,
                   radius: brushSize,
@@ -149,13 +180,29 @@ export function SelectionStep({
                 onManualMaskStroke(stroke);
               }}
               onPointerUp={(event) => {
+                editPointersRef.current.delete(event.pointerId);
+                pinchStartRef.current = null;
                 if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                   event.currentTarget.releasePointerCapture(event.pointerId);
                 }
               }}
+              onPointerCancel={(event) => {
+                editPointersRef.current.delete(event.pointerId);
+                pinchStartRef.current = null;
+              }}
             />
           </div>
-          <BrushControls mode={brushMode} size={brushSize} onModeChange={setBrushMode} onSizeChange={setBrushSize} />
+          <button className="secondary-button compact-button" type="button" onClick={() => setView({ scale: 1, offsetX: 0, offsetY: 0 })}>
+            重置缩放
+          </button>
+          <BrushControls
+            mode={brushMode}
+            size={brushSize}
+            canUndo={canUndoManualMask}
+            onModeChange={setBrushMode}
+            onSizeChange={setBrushSize}
+            onUndo={onUndoManualMask}
+          />
           <MaskControls settings={maskSettings} onChange={onMaskSettingsChange} />
         </>
       ) : null}
@@ -188,11 +235,15 @@ function BrushControls({
   size,
   onModeChange,
   onSizeChange,
+  canUndo,
+  onUndo,
 }: {
   mode: BrushMode;
   size: number;
+  canUndo: boolean;
   onModeChange(mode: BrushMode): void;
   onSizeChange(size: number): void;
+  onUndo(): void;
 }) {
   return (
     <div className="mask-controls">
@@ -204,6 +255,9 @@ function BrushControls({
           恢复
         </button>
       </div>
+      <button className="secondary-button compact-button" type="button" disabled={!canUndo} onClick={onUndo}>
+        撤回上一笔
+      </button>
       <label className="slider-control">
         <span>画笔 {size}px</span>
         <input type="range" min="4" max="48" step="2" value={size} onChange={(event) => onSizeChange(Number(event.target.value))} />
@@ -285,7 +339,7 @@ function drawPromptStroke(context: CanvasRenderingContext2D, points: SelectionPo
   context.stroke();
 }
 
-function drawEditablePreview(canvas: HTMLCanvasElement, frame: ImageData, mask: Uint8Array) {
+function drawEditablePreview(canvas: HTMLCanvasElement, frame: ImageData, mask: Uint8Array, view: ViewTransform) {
   const context = canvas.getContext('2d');
   if (!context) return;
 
@@ -294,8 +348,19 @@ function drawEditablePreview(canvas: HTMLCanvasElement, frame: ImageData, mask: 
     output.data[pixel * 4 + 3] = mask[pixel] ? 255 : 0;
   }
 
+  const buffer = document.createElement('canvas');
+  buffer.width = frame.width;
+  buffer.height = frame.height;
+  const bufferContext = buffer.getContext('2d');
+  if (!bufferContext) return;
+  bufferContext.putImageData(output, 0, 0);
+
   context.clearRect(0, 0, canvas.width, canvas.height);
-  context.putImageData(output, 0, 0);
+  context.save();
+  context.translate(view.offsetX, view.offsetY);
+  context.scale(view.scale, view.scale);
+  context.drawImage(buffer, 0, 0);
+  context.restore();
 }
 
 function getCanvasRelativePoint(canvas: HTMLCanvasElement, clientX: number, clientY: number): SelectionPoint {
@@ -303,5 +368,45 @@ function getCanvasRelativePoint(canvas: HTMLCanvasElement, clientX: number, clie
   return {
     x: ((clientX - rect.left) / rect.width) * canvas.width,
     y: ((clientY - rect.top) / rect.height) * canvas.height,
+  };
+}
+
+function screenToImagePoint(point: Point, view: ViewTransform): SelectionPoint {
+  return {
+    x: (point.x - view.offsetX) / view.scale,
+    y: (point.y - view.offsetY) / view.scale,
+  };
+}
+
+function getPinchStart(pointers: Map<number, Point>, view: ViewTransform) {
+  const points = Array.from(pointers.values()).slice(0, 2);
+  return {
+    distance: getDistance(points[0], points[1]),
+    midpoint: getMidpoint(points[0], points[1]),
+    view,
+  };
+}
+
+function getNextPinchView(pointers: Map<number, Point>, start: { distance: number; midpoint: Point; view: ViewTransform }): ViewTransform {
+  const points = Array.from(pointers.values()).slice(0, 2);
+  const distance = getDistance(points[0], points[1]);
+  const midpoint = getMidpoint(points[0], points[1]);
+  const nextScale = Math.max(1, Math.min(6, start.view.scale * (distance / Math.max(1, start.distance))));
+
+  return {
+    scale: nextScale,
+    offsetX: midpoint.x - ((start.midpoint.x - start.view.offsetX) / start.view.scale) * nextScale,
+    offsetY: midpoint.y - ((start.midpoint.y - start.view.offsetY) / start.view.scale) * nextScale,
+  };
+}
+
+function getDistance(a: Point, b: Point) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function getMidpoint(a: Point, b: Point): Point {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
   };
 }
