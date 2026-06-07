@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getFrameTimes, getScaledSize, validateVideoMetadata } from '../domain/video';
+import { getFrameTimes, getPreviewFrameTime, getScaledSize, validateVideoMetadata } from '../domain/video';
 
 describe('video validation', () => {
   it('accepts videos up to 10 seconds', () => {
@@ -19,5 +19,10 @@ describe('video validation', () => {
 
   it('scales dimensions by longest edge', () => {
     expect(getScaledSize(1080, 1920, 320)).toEqual({ width: 180, height: 320 });
+  });
+
+  it('uses a near-start decoded frame for upload preview', () => {
+    expect(getPreviewFrameTime(10)).toBe(0.05);
+    expect(getPreviewFrameTime(0.04)).toBe(0.02);
   });
 });

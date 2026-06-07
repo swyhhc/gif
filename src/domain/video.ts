@@ -40,6 +40,10 @@ export function getScaledSize(width: number, height: number, longestEdge: number
   };
 }
 
+export function getPreviewFrameTime(duration: number): number {
+  return Number(Math.min(0.05, duration / 2).toFixed(3));
+}
+
 function waitForEvent<T extends Event>(target: EventTarget, eventName: string): Promise<T> {
   return new Promise((resolve) => {
     target.addEventListener(eventName, (event) => resolve(event as T), { once: true });
@@ -78,7 +82,7 @@ export async function captureFirstFrame(file: File, longestEdge = 480): Promise<
   try {
     await waitForEvent(video, 'loadedmetadata');
     await waitForDrawableFrame(video);
-    await seekVideo(video, 0);
+    await seekVideo(video, getPreviewFrameTime(video.duration));
     const size = getScaledSize(video.videoWidth, video.videoHeight, longestEdge);
     return drawVideoFrame(video, size.width, size.height);
   } finally {
