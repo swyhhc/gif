@@ -76,8 +76,7 @@ export async function captureFirstFrame(file: File, longestEdge = 480): Promise<
 
   try {
     await waitForEvent(video, 'loadedmetadata');
-    video.currentTime = 0;
-    await waitForEvent(video, 'seeked');
+    await seekVideo(video, 0);
     const size = getScaledSize(video.videoWidth, video.videoHeight, longestEdge);
     return drawVideoFrame(video, size.width, size.height);
   } finally {
@@ -105,8 +104,7 @@ export async function extractVideoFrames(file: File, settings: ExportSettings): 
     const frames: ExtractedFrame[] = [];
 
     for (const time of frameTimes) {
-      video.currentTime = time;
-      await waitForEvent(video, 'seeked');
+      await seekVideo(video, time);
       frames.push({ time, imageData: drawVideoFrame(video, size.width, size.height) });
     }
 
@@ -114,6 +112,16 @@ export async function extractVideoFrames(file: File, settings: ExportSettings): 
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
+  if (Math.abs(video.currentTime - time) < 0.001 && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    return;
+  }
+
+  const seeked = waitForEvent(video, 'seeked');
+  video.currentTime = time;
+  await seeked;
 }
 
 function drawVideoFrame(video: HTMLVideoElement, width: number, height: number): ImageData {
