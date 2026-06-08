@@ -4,6 +4,7 @@ import {
   getPreviewFrameTime,
   getScaledSize,
   validateVideoMetadata,
+  waitForConditionWithEvents,
   waitForEventWithTimeout,
 } from '../domain/video';
 
@@ -39,6 +40,17 @@ describe('video validation', () => {
     const expectation = expect(promise).rejects.toThrow('读取视频超时，请重新选择。');
     await vi.advanceTimersByTimeAsync(100);
     await expectation;
+    vi.useRealTimers();
+  });
+
+  it('resolves when an event makes the condition true', async () => {
+    vi.useFakeTimers();
+    const target = new EventTarget();
+    let ready = false;
+    const promise = waitForConditionWithEvents(target, ['loadedmetadata', 'durationchange'], () => ready, 1000, 'timeout');
+    ready = true;
+    target.dispatchEvent(new Event('durationchange'));
+    await expect(promise).resolves.toBeUndefined();
     vi.useRealTimers();
   });
 });

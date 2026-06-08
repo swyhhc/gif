@@ -95,19 +95,76 @@ function waitForAnyEventWithTimeout(
   });
 }
 
-function createVideoElement(file: File): { video: HTMLVideoElement; url: string } {
+export function waitForConditionWithEvents(
+  target: EventTarget,
+  eventNames: string[],
+  condition: () => boolean,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (condition()) {
+      resolve();
+      return;
+    }
+
+    const intervalId = window.setInterval(check, 120);
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    function cleanup() {
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+      for (const eventName of eventNames) {
+        target.removeEventListener(eventName, check);
+      }
+    }
+
+    function check() {
+      if (!condition()) return;
+      cleanup();
+      resolve();
+    }
+
+    for (const eventName of eventNames) {
+      target.addEventListener(eventName, check);
+    }
+  });
+}
+
+function createVideoElement(file: File): { video: HTMLVideoElement; url: string; cleanup(): void } {
   const url = URL.createObjectURL(file);
   const video = document.createElement('video');
   video.preload = 'auto';
   video.muted = true;
   video.playsInline = true;
+  video.controls = false;
+  video.style.position = 'fixed';
+  video.style.left = '-9999px';
+  video.style.top = '0';
+  video.style.width = '1px';
+  video.style.height = '1px';
+  video.style.opacity = '0';
   video.src = url;
+  document.body.appendChild(video);
   video.load();
-  return { video, url };
+  return {
+    video,
+    url,
+    cleanup() {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      video.remove();
+      URL.revokeObjectURL(url);
+    },
+  };
 }
 
 export async function loadVideoMetadata(file: File): Promise<VideoMetadata> {
-  const { video, url } = createVideoElement(file);
+  const { video, cleanup } = createVideoElement(file);
 
   try {
     await waitForVideoMetadata(video);
@@ -118,12 +175,12 @@ export async function loadVideoMetadata(file: File): Promise<VideoMetadata> {
       height: video.videoHeight,
     };
   } finally {
-    URL.revokeObjectURL(url);
+    cleanup();
   }
 }
 
 export async function captureFirstFrame(file: File, longestEdge = 480): Promise<ImageData> {
-  const { video, url } = createVideoElement(file);
+  const { video, cleanup } = createVideoElement(file);
 
   try {
     await waitForVideoMetadata(video);
@@ -132,12 +189,12 @@ export async function captureFirstFrame(file: File, longestEdge = 480): Promise<
     const size = getScaledSize(video.videoWidth, video.videoHeight, longestEdge);
     return drawVideoFrame(video, size.width, size.height);
   } finally {
-    URL.revokeObjectURL(url);
+    cleanup();
   }
 }
 
 export async function extractVideoFrames(file: File, settings: ExportSettings): Promise<ExtractedFrame[]> {
-  const { video, url } = createVideoElement(file);
+  const { video, cleanup } = createVideoElement(file);
 
   try {
     await waitForVideoMetadata(video);
@@ -163,7 +220,7 @@ export async function extractVideoFrames(file: File, settings: ExportSettings): 
 
     return frames;
   } finally {
-    URL.revokeObjectURL(url);
+    cleanup();
   }
 }
 
@@ -182,7 +239,13 @@ async function waitForDrawableFrame(video: HTMLVideoElement): Promise<void> {
     return;
   }
 
-  await waitForAnyEventWithTimeout(video, ['loadeddata', 'canplay'], 8000, '读取视频画面超时，请重新选择。');
+  await waitForConditionWithEvents(
+    video,
+    ['loadeddata', 'canplay', 'canplaythrough', 'timeupdate'],
+    () => video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+    20000,
+    '读取视频画面超时，请重新选择。',
+  );
 }
 
 async function waitForVideoMetadata(video: HTMLVideoElement): Promise<void> {
@@ -190,7 +253,13 @@ async function waitForVideoMetadata(video: HTMLVideoElement): Promise<void> {
     return;
   }
 
-  await waitForEventWithTimeout(video, 'loadedmetadata', 8000, '读取视频信息超时，请重新选择。');
+  await waitForConditionWithEvents(
+    video,
+    ['loadedmetadata', 'durationchange', 'loadeddata', 'canplay'],
+    () => video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0 && video.videoHeight > 0,
+    20000,
+    '读取视频信息超时，请重新选择。',
+  );
 }
 
 function drawVideoFrame(video: HTMLVideoElement, width: number, height: number): ImageData {
