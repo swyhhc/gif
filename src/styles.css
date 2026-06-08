@@ -124,7 +124,8 @@ h1 {
 }
 
 .hint-text,
-.error-text {
+.error-text,
+.subtle-text {
   margin: 0;
   font-size: 14px;
   line-height: 1.45;
@@ -132,6 +133,10 @@ h1 {
 
 .hint-text {
   color: #5f6a70;
+}
+
+.subtle-text {
+  color: #718078;
 }
 
 .error-text {

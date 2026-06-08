@@ -31,6 +31,7 @@ export function ResultStep({ resultUrl, history, onRetry, onNewVideo }: ResultSt
       <div className="step-heading">
         <p className="eyebrow">已完成</p>
         <h1>透明 GIF</h1>
+        <p className="subtle-text">长按直接保存到“照片”</p>
       </div>
       <div className="checkerboard preview-box">
         <img src={resultUrl} alt="透明 GIF 预览" />
