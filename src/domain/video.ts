@@ -44,9 +44,54 @@ export function getPreviewFrameTime(duration: number): number {
   return Number(Math.min(0.05, duration / 2).toFixed(3));
 }
 
-function waitForEvent<T extends Event>(target: EventTarget, eventName: string): Promise<T> {
-  return new Promise((resolve) => {
-    target.addEventListener(eventName, (event) => resolve(event as T), { once: true });
+export function waitForEventWithTimeout<T extends Event>(
+  target: EventTarget,
+  eventName: string,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      target.removeEventListener(eventName, onEvent);
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    function onEvent(event: Event) {
+      window.clearTimeout(timeoutId);
+      resolve(event as T);
+    }
+
+    target.addEventListener(eventName, onEvent, { once: true });
+  });
+}
+
+function waitForAnyEventWithTimeout(
+  target: EventTarget,
+  eventNames: string[],
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<Event> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    function cleanup() {
+      window.clearTimeout(timeoutId);
+      for (const eventName of eventNames) {
+        target.removeEventListener(eventName, onEvent);
+      }
+    }
+
+    function onEvent(event: Event) {
+      cleanup();
+      resolve(event);
+    }
+
+    for (const eventName of eventNames) {
+      target.addEventListener(eventName, onEvent);
+    }
   });
 }
 
@@ -57,6 +102,7 @@ function createVideoElement(file: File): { video: HTMLVideoElement; url: string 
   video.muted = true;
   video.playsInline = true;
   video.src = url;
+  video.load();
   return { video, url };
 }
 
@@ -64,7 +110,7 @@ export async function loadVideoMetadata(file: File): Promise<VideoMetadata> {
   const { video, url } = createVideoElement(file);
 
   try {
-    await waitForEvent(video, 'loadedmetadata');
+    await waitForVideoMetadata(video);
     await waitForDrawableFrame(video);
     return {
       duration: video.duration,
@@ -80,7 +126,7 @@ export async function captureFirstFrame(file: File, longestEdge = 480): Promise<
   const { video, url } = createVideoElement(file);
 
   try {
-    await waitForEvent(video, 'loadedmetadata');
+    await waitForVideoMetadata(video);
     await waitForDrawableFrame(video);
     await seekVideo(video, getPreviewFrameTime(video.duration));
     const size = getScaledSize(video.videoWidth, video.videoHeight, longestEdge);
@@ -94,7 +140,7 @@ export async function extractVideoFrames(file: File, settings: ExportSettings): 
   const { video, url } = createVideoElement(file);
 
   try {
-    await waitForEvent(video, 'loadedmetadata');
+    await waitForVideoMetadata(video);
     await waitForDrawableFrame(video);
     const validation = validateVideoMetadata({
       duration: video.duration,
@@ -126,7 +172,7 @@ async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
     return;
   }
 
-  const seeked = waitForEvent(video, 'seeked');
+  const seeked = waitForEventWithTimeout(video, 'seeked', 5000, '定位视频帧超时，请重新选择视频。');
   video.currentTime = time;
   await seeked;
 }
@@ -136,7 +182,15 @@ async function waitForDrawableFrame(video: HTMLVideoElement): Promise<void> {
     return;
   }
 
-  await Promise.race([waitForEvent(video, 'loadeddata'), waitForEvent(video, 'canplay')]);
+  await waitForAnyEventWithTimeout(video, ['loadeddata', 'canplay'], 8000, '读取视频画面超时，请重新选择。');
+}
+
+async function waitForVideoMetadata(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0 && video.videoHeight > 0) {
+    return;
+  }
+
+  await waitForEventWithTimeout(video, 'loadedmetadata', 8000, '读取视频信息超时，请重新选择。');
 }
 
 function drawVideoFrame(video: HTMLVideoElement, width: number, height: number): ImageData {

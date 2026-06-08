@@ -1,9 +1,10 @@
 type UploadStepProps = {
   error: string | null;
+  isLoading: boolean;
   onVideoSelected(file: File): void;
 };
 
-export function UploadStep({ error, onVideoSelected }: UploadStepProps) {
+export function UploadStep({ error, isLoading, onVideoSelected }: UploadStepProps) {
   return (
     <section className="step-panel">
       <div>
@@ -18,12 +19,13 @@ export function UploadStep({ error, onVideoSelected }: UploadStepProps) {
           accept="video/*"
           onChange={(event) => {
             const file = event.target.files?.[0];
+            event.currentTarget.value = '';
             if (file) {
               onVideoSelected(file);
             }
           }}
         />
-        <span>选择视频</span>
+        <span>{isLoading ? '正在读取视频...' : '选择视频'}</span>
       </label>
       {error ? <p className="error-text">{error}</p> : null}
       <p className="hint-text">视频不会上传到服务器，所有处理都在当前浏览器内完成。</p>

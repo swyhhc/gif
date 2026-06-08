@@ -44,6 +44,7 @@ export function App() {
   const [maskSettings, setMaskSettings] = useState<MaskSettings>({ invert: true, threshold: 0.5, edgeOffset: 0 });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const cancelRef = useRef(false);
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export function App() {
 
   async function handleVideoSelected(file: File) {
     setError(null);
+    setIsUploading(true);
 
     try {
       const metadata = await loadVideoMetadata(file);
@@ -76,6 +78,8 @@ export function App() {
       setStep('select');
     } catch (event) {
       setError(event instanceof Error ? event.message : '无法读取这个视频。');
+    } finally {
+      setIsUploading(false);
     }
   }
 
@@ -267,7 +271,7 @@ export function App() {
   return (
     <main className="app-shell">
       <div className="tool-panel">
-        {step === 'upload' ? <UploadStep error={error} onVideoSelected={handleVideoSelected} /> : null}
+        {step === 'upload' ? <UploadStep error={error} isLoading={isUploading} onVideoSelected={handleVideoSelected} /> : null}
         {step === 'select' && firstFrame ? (
           <SelectionStep
             frame={firstFrame}

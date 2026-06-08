@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { getFrameTimes, getPreviewFrameTime, getScaledSize, validateVideoMetadata } from '../domain/video';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  getFrameTimes,
+  getPreviewFrameTime,
+  getScaledSize,
+  validateVideoMetadata,
+  waitForEventWithTimeout,
+} from '../domain/video';
 
 describe('video validation', () => {
   it('accepts videos up to 10 seconds', () => {
@@ -24,5 +30,15 @@ describe('video validation', () => {
   it('uses a near-start decoded frame for upload preview', () => {
     expect(getPreviewFrameTime(10)).toBe(0.05);
     expect(getPreviewFrameTime(0.04)).toBe(0.02);
+  });
+
+  it('times out when a video event never fires', async () => {
+    vi.useFakeTimers();
+    const target = new EventTarget();
+    const promise = waitForEventWithTimeout(target, 'loadedmetadata', 100, '读取视频超时，请重新选择。');
+    const expectation = expect(promise).rejects.toThrow('读取视频超时，请重新选择。');
+    await vi.advanceTimersByTimeAsync(100);
+    await expectation;
+    vi.useRealTimers();
   });
 });
