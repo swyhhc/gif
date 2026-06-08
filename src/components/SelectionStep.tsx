@@ -131,7 +131,7 @@ export function SelectionStep({
           setStart(null);
         }}
       />
-      <p className="hint-text">点一下主体，或拖一个框辅助定位。下一步会先显示真正抠出来的透明预览。</p>
+      <p className="hint-text">点一下主体，或一笔涂抹主体辅助定位。下一步会先显示真正抠出来的透明预览。</p>
       {previewStatus ? <p className="hint-text">{previewStatus}</p> : null}
       {previewError ? <p className="error-text">{previewError}</p> : null}
       {previewUrl ? (

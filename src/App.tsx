@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SettingsStep } from './components/SettingsStep';
 import { SelectionStep, type MaskSettings } from './components/SelectionStep';
 import { ProcessingStep } from './components/ProcessingStep';
@@ -50,6 +50,10 @@ export function App() {
   useEffect(() => {
     listHistory().then(setHistory).catch(() => setHistory([]));
   }, []);
+
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [step]);
 
   useEffect(() => {
     return () => {
@@ -303,6 +307,7 @@ export function App() {
         ) : null}
         {step === 'settings' ? (
           <SettingsStep
+            key="settings-step"
             onBack={() => setStep('select')}
             onStart={(nextSettings) => {
               void processVideo(nextSettings);

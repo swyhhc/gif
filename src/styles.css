@@ -31,8 +31,9 @@ input {
   min-height: calc(100vh - 36px);
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 18px;
+  padding: 24px 0;
 }
 
 .step-heading {
