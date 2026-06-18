@@ -3,7 +3,7 @@ import { getSelectionCenter, type SelectionRect, type SubjectPrompt } from '../d
 
 export const MEDIAPIPE_TASKS_VERSION = '0.10.35';
 export function getVisionWasmUrl() {
-  return `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_TASKS_VERSION}/wasm`;
+  return '/mediapipe/tasks-vision/wasm';
 }
 
 const MODEL_URL =
