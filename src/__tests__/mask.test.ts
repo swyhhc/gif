@@ -3,6 +3,7 @@ import {
   applyMaskToImageData,
   applyMaskBrushStroke,
   applyMaskBrushStrokes,
+  applyFrameBrushStrokes,
   fillMaskHoles,
   applyBinaryMaskToImageData,
   getMaskCoverage,
@@ -89,6 +90,14 @@ describe('mask utilities', () => {
       { mode: 'restore', radius: 0, points: [{ x: 0, y: 0 }] },
     ]);
     expect(Array.from(edited)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('only applies manual brush edits to the reference frame', () => {
+    const mask = new Uint8Array([1, 1, 1, 1]);
+    const strokes = [{ mode: 'erase' as const, radius: 0, points: [{ x: 0, y: 0 }] }];
+
+    expect(Array.from(applyFrameBrushStrokes(mask, 2, 2, strokes, 0))).toEqual([0, 1, 1, 1]);
+    expect(Array.from(applyFrameBrushStrokes(mask, 2, 2, strokes, 1))).toEqual([1, 1, 1, 1]);
   });
 
   it('fills internal holes while preserving outside background', () => {

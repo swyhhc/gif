@@ -110,6 +110,17 @@ export function applyMaskBrushStrokes(
   return strokes.reduce((current, stroke) => applyMaskBrushStroke(current, width, height, stroke), mask);
 }
 
+export function applyFrameBrushStrokes(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  strokes: MaskBrushStroke[],
+  frameIndex: number,
+): Uint8Array {
+  if (frameIndex !== 0) return mask;
+  return applyMaskBrushStrokes(mask, width, height, strokes);
+}
+
 export function fillMaskHoles(mask: Uint8Array, width: number, height: number): Uint8Array {
   const outside = new Uint8Array(mask.length);
   const queue: number[] = [];

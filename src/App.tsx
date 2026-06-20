@@ -9,6 +9,7 @@ import { saveHistoryItem, listHistory, type HistoryItem } from './domain/history
 import { createExportId } from './domain/ids';
 import {
   applyBinaryMaskToImageData,
+  applyFrameBrushStrokes,
   applyMaskBrushStroke,
   applyMaskBrushStrokes,
   hasLikelySubjectMask,
@@ -122,7 +123,7 @@ export function App() {
           progress: 10 + (index / Math.max(1, frames.length)) * 70,
         });
         const mask = await segmenter.segmentFrame(canvas, framePrompt);
-        const binaryMask = applyStrokesToMask(
+        const binaryMask = applyFrameBrushStrokes(
           refineMask(mask, frame.imageData.width, frame.imageData.height, {
             threshold: maskSettings.threshold,
             invert: maskSettings.invert,
@@ -131,6 +132,7 @@ export function App() {
           frame.imageData.width,
           frame.imageData.height,
           scaleBrushStrokes(manualBrushStrokes, firstFrame, frame.imageData),
+          index,
         );
         gifFrames.push({
           imageData: applyBinaryMaskToImageData(frame.imageData, binaryMask),
